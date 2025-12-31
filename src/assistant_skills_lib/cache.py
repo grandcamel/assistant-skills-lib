@@ -13,20 +13,19 @@ Features:
 - Cache hit/miss statistics
 """
 
-import os
-import json
-import sqlite3
-import hashlib
-import threading
 import fnmatch
 import functools
-import re
+import hashlib
+import json
+import os
+import sqlite3
+import threading
 import time
-from datetime import datetime, timedelta
-from pathlib import Path
-from typing import Dict, Any, Optional, Tuple
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from datetime import timedelta
+from pathlib import Path
+from typing import Any, Optional
 
 
 @dataclass
@@ -36,7 +35,7 @@ class CacheStats:
     total_size_bytes: int = 0
     hits: int = 0
     misses: int = 0
-    by_category: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    by_category: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     @property
     def hit_rate(self) -> float:
@@ -57,7 +56,7 @@ def is_simple_glob_pattern(pattern: str) -> bool:
     return True
 
 
-def glob_to_sql_like(pattern: str) -> Tuple[str, bool]:
+def glob_to_sql_like(pattern: str) -> tuple[str, bool]:
     """
     Convert a glob pattern to SQL LIKE pattern if possible.
     """
@@ -105,10 +104,10 @@ class SkillCache:
 
         self._init_db()
 
-    def set_ttl_defaults(self, defaults: Dict[str, timedelta]):
+    def set_ttl_defaults(self, defaults: dict[str, timedelta]):
         """
         Set or override TTL defaults for different categories.
-        
+
         Args:
             defaults: A dictionary mapping category names to timedelta objects.
         """
@@ -214,7 +213,7 @@ class SkillCache:
             space_needed = current_size + new_entry_size - self.max_size
             freed = 0
             cursor = conn.execute("SELECT key, category, size_bytes FROM cache_entries ORDER BY last_accessed_at ASC")
-            
+
             entries_to_delete = []
             for row in cursor:
                 if freed >= space_needed:
@@ -258,7 +257,7 @@ class SkillCache:
                 cursor = conn.execute("DELETE FROM cache_entries WHERE category = ?", (category,))
             else:
                 return 0 # Do nothing if no key, pattern or category is specified
-            
+
             conn.commit()
             return cursor.rowcount
 
@@ -322,7 +321,7 @@ get_cache = get_skill_cache
 
 
 # Global cache registry for the cached decorator
-_cache_registry: Dict[str, SkillCache] = {}
+_cache_registry: dict[str, SkillCache] = {}
 
 
 def _get_default_cache() -> SkillCache:

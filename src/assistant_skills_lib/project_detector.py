@@ -13,12 +13,11 @@ Usage:
 """
 
 import json
-import re
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Any, Optional
 
 
-def detect_project(path: str) -> Optional[Dict[str, Any]]:
+def detect_project(path: str) -> Optional[dict[str, Any]]:
     """
     Detect if a path contains an Assistant Skills project.
 
@@ -82,13 +81,13 @@ def detect_project(path: str) -> Optional[Dict[str, Any]]:
                 if key not in ('$schema', 'permissions'):
                     project_info['topic_prefix'] = key.replace('-assistant', '')
                     break
-        except (json.JSONDecodeError, IOError):
+        except (OSError, json.JSONDecodeError):
             pass
 
     return project_info
 
 
-def list_skills(project_path: str) -> List[Dict[str, Any]]:
+def list_skills(project_path: str) -> list[dict[str, Any]]:
     """
     List all skills in a project with their details.
 
@@ -148,7 +147,7 @@ def get_topic_prefix(project_path: str) -> Optional[str]:
     return project['topic_prefix'] if project else None
 
 
-def get_shared_lib_modules(project_path: str) -> List[str]:
+def get_shared_lib_modules(project_path: str) -> list[str]:
     """
     List modules in the shared library.
 
@@ -170,7 +169,7 @@ def get_shared_lib_modules(project_path: str) -> List[str]:
     ]
 
 
-def validate_structure(project_path: str) -> Dict[str, Any]:
+def validate_structure(project_path: str) -> dict[str, Any]:
     """
     Validate project structure against expected patterns.
 
@@ -248,7 +247,7 @@ def validate_structure(project_path: str) -> Dict[str, Any]:
     }
 
 
-def get_project_stats(project_path: str) -> Dict[str, int]:
+def get_project_stats(project_path: str) -> dict[str, int]:
     """
     Get statistics about a project.
 

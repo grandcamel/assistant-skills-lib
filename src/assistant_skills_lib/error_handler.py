@@ -16,11 +16,11 @@ Usage:
         pass
 """
 
-import sys
-import re
 import functools
+import re
+import sys
 import traceback
-from typing import Optional, Callable, Any, Dict, Type, Union
+from typing import Any, Callable, Optional, Union
 
 # Try to import requests for specific exception handling at the base level
 try:
@@ -40,13 +40,13 @@ class BaseAPIError(Exception):
         self,
         message: str,
         status_code: Optional[int] = None,
-        response_data: Optional[Union[str, Dict[str, Any]]] = None, # Raw response data, can be text or parsed JSON
+        response_data: Optional[Union[str, dict[str, Any]]] = None, # Raw response data, can be text or parsed JSON
         operation: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None, # For additional service-specific details
+        details: Optional[dict[str, Any]] = None, # For additional service-specific details
     ):
         self.message = message
         self.status_code = status_code
-        self.response_data = response_data 
+        self.response_data = response_data
         self.operation = operation
         self.details = details or {}
         super().__init__(self.message)
@@ -153,7 +153,7 @@ def print_error(
     error: Optional[BaseAPIError] = None, # Expects BaseAPIError or subclass
     suggestion: Optional[str] = None,
     show_traceback: bool = False,
-    extra_hints: Optional[Dict[Type[BaseAPIError], str]] = None,
+    extra_hints: Optional[dict[type[BaseAPIError], str]] = None,
 ) -> None:
     """
     Print a formatted error message to stderr.
@@ -180,7 +180,7 @@ def print_error(
             print(f"  Hint: Wait {error.retry_after} seconds before retrying", file=sys.stderr)
         elif isinstance(error, NotFoundError):
             print("  Hint: Check that the resource ID/key is correct", file=sys.stderr)
-        
+
         # Service-specific hints provided by subclass
         if extra_hints:
             for error_type, hint in extra_hints.items():
@@ -295,7 +295,7 @@ class ErrorContext:
     def __enter__(self) -> 'ErrorContext':
         return self
 
-    def __exit__(self, exc_type: Optional[Type[BaseAPIError]], exc_val: Optional[BaseAPIError], exc_tb: Any) -> bool:
+    def __exit__(self, exc_type: Optional[type[BaseAPIError]], exc_val: Optional[BaseAPIError], exc_tb: Any) -> bool:
         if exc_type is not None and issubclass(exc_type, BaseAPIError):
             # Enhance error message with context
             context_str = ", ".join(f"{k}={v}" for k, v in self.context.items())

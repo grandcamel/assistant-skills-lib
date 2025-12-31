@@ -14,14 +14,14 @@ Provides consistent CLI output utilities, including:
 - CSV export/string generation
 """
 
+import csv
 import json
 import sys
-import csv
+from collections.abc import Sequence
 from datetime import datetime
-from pathlib import Path
 from io import StringIO
-from typing import Any, Dict, List, Optional, Sequence, Union
-
+from pathlib import Path
+from typing import Any, Optional, Union
 
 # Try to import tabulate for advanced table formatting
 try:
@@ -58,9 +58,9 @@ def _colorize(text: str, color: str) -> str:
 
 
 def format_table(
-    data: Sequence[Dict[str, Any]],
-    columns: Optional[List[str]] = None,
-    headers: Optional[List[str]] = None,
+    data: Sequence[dict[str, Any]],
+    columns: Optional[list[str]] = None,
+    headers: Optional[list[str]] = None,
     tablefmt: str = 'simple', # default format for tabulate
     max_col_width: int = 50, # For fallback table
     truncate_long_values: bool = True,
@@ -110,9 +110,9 @@ def format_table(
 
 
 def _format_basic_table_fallback(
-    data: Sequence[Dict[str, Any]],
-    columns: List[str],
-    headers: List[str],
+    data: Sequence[dict[str, Any]],
+    columns: list[str],
+    headers: list[str],
     max_col_width: int,
     truncate_long_values: bool,
 ) -> str:
@@ -129,7 +129,7 @@ def _format_basic_table_fallback(
             if truncate_long_values and len(val) > max_col_width:
                 val = val[:max_col_width - 3] + "..."
             widths[i] = max(widths[i], len(val))
-    
+
     # Apply max_col_width to calculated widths
     widths = [min(w, max_col_width) for w in widths]
 
@@ -154,7 +154,7 @@ def _format_basic_table_fallback(
 
 def format_tree(
     root: str,
-    items: List[Dict[str, Any]],
+    items: list[dict[str, Any]],
     name_key: str = 'name',
     children_key: str = 'children'
 ) -> str:
@@ -172,7 +172,7 @@ def format_tree(
     """
     lines = [root]
 
-    def add_items(current_items: List, prefix: str = '', is_last_parent: bool = True):
+    def add_items(current_items: list, prefix: str = '', is_last_parent: bool = True):
         for i, item in enumerate(current_items):
             is_last = i == len(current_items) - 1
 
@@ -318,7 +318,7 @@ def format_file_size(size_bytes: Union[int, float]) -> str:
     """Format file size in human-readable format."""
     if size_bytes < 0:
         return "N/A"
-    
+
     for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
         if size_bytes < 1024:
             return f"{size_bytes:.1f} {unit}"
@@ -385,10 +385,10 @@ def format_timestamp(timestamp: Optional[str], format_str: str = "%Y-%m-%d %H:%M
         # datetime.fromisoformat requires exact format, so try to clean/adapt
         if timestamp.endswith('Z'):
             timestamp = timestamp[:-1] + '+00:00'
-        
+
         # Split at '+' or '-' for timezone to remove it if not needed for fromisoformat
         dt_part = timestamp.split('+')[0].split('-')[0] # get only date-time part
-        
+
         # Try parsing with microsecond precision, then without
         try:
             dt = datetime.fromisoformat(dt_part)
@@ -402,10 +402,10 @@ def format_timestamp(timestamp: Optional[str], format_str: str = "%Y-%m-%d %H:%M
 
 
 def export_csv(
-    data: List[Dict[str, Any]],
+    data: list[dict[str, Any]],
     file_path: Union[str, Path],
-    columns: Optional[List[str]] = None,
-    headers: Optional[List[str]] = None,
+    columns: Optional[list[str]] = None,
+    headers: Optional[list[str]] = None,
 ) -> Path:
     """
     Export a list of dictionaries to a CSV file.
@@ -442,9 +442,9 @@ def export_csv(
 
 
 def get_csv_string(
-    data: List[Dict[str, Any]],
-    columns: Optional[List[str]] = None,
-    headers: Optional[List[str]] = None,
+    data: list[dict[str, Any]],
+    columns: Optional[list[str]] = None,
+    headers: Optional[list[str]] = None,
 ) -> str:
     """
     Generate a CSV formatted string from a list of dictionaries.

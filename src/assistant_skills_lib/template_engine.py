@@ -14,8 +14,7 @@ Usage:
 
 import re
 from pathlib import Path
-from typing import Dict, List, Optional, Set
-
+from typing import Optional
 
 # Regex pattern for {{PLACEHOLDER}} syntax
 PLACEHOLDER_PATTERN = re.compile(r'\{\{(\w+)\}\}')
@@ -46,7 +45,7 @@ def load_template(path: str) -> str:
     return template_path.read_text(encoding='utf-8')
 
 
-def list_placeholders(template: str) -> List[str]:
+def list_placeholders(template: str) -> list[str]:
     """
     Extract all unique placeholders from a template.
 
@@ -64,7 +63,7 @@ def list_placeholders(template: str) -> List[str]:
     return sorted(set(matches))
 
 
-def render_template(template: str, context: Dict[str, str], strict: bool = True) -> str:
+def render_template(template: str, context: dict[str, str], strict: bool = True) -> str:
     """
     Replace placeholders in template with values from context.
 
@@ -98,7 +97,7 @@ def render_template(template: str, context: Dict[str, str], strict: bool = True)
     return PLACEHOLDER_PATTERN.sub(replace, template)
 
 
-def validate_context(template: str, context: Dict[str, str]) -> Dict[str, any]:
+def validate_context(template: str, context: dict[str, str]) -> dict[str, any]:
     """
     Validate that context provides all required placeholders.
 
@@ -138,7 +137,7 @@ def get_template_dir() -> Path:
     return project_root
 
 
-def list_template_files(category: Optional[str] = None) -> List[Dict[str, str]]:
+def list_template_files(category: Optional[str] = None) -> list[dict[str, str]]:
     """
     List available template files.
 

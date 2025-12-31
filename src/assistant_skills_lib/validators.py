@@ -6,7 +6,7 @@ Provides common input validation utilities for user inputs, paths, URLs, etc.
 
 import re
 from pathlib import Path
-from typing import List, Optional, Union, Any
+from typing import Any, Optional, Union
 
 # Import ValidationError from the base error_handler
 from assistant_skills_lib.error_handler import ValidationError
@@ -200,8 +200,8 @@ def validate_url(
     url: str,
     field_name: str = "URL",
     require_https: bool = False,
-    allowed_schemes: Optional[List[str]] = None,
-    allowed_domains: Optional[List[str]] = None
+    allowed_schemes: Optional[list[str]] = None,
+    allowed_domains: Optional[list[str]] = None
 ) -> str:
     """
     Validate a URL format. This version is more robust, combining features from service libs.
@@ -246,7 +246,7 @@ def validate_url(
         raise ValidationError(
             f"Invalid {field_name} format: {e}",
             operation="validation", details={"field": field_name, "value": url}
-        )
+        ) from e
 
     if not parsed.scheme or parsed.scheme not in allowed_schemes:
         raise ValidationError(
@@ -265,7 +265,7 @@ def validate_url(
             f"{field_name} must include a host",
             operation="validation", details={"field": field_name, "value": url}
         )
-    
+
     if allowed_domains:
         domain_match = False
         for domain_suffix in allowed_domains:
@@ -320,7 +320,7 @@ def validate_email(
 
 def validate_choice(
     value: str,
-    choices: List[str],
+    choices: list[str],
     field_name: str = "value"
 ) -> str:
     """
@@ -362,7 +362,7 @@ def validate_list(
     separator: str = ",",
     min_items: int = 0,
     max_items: Optional[int] = None
-) -> List[str]:
+) -> list[str]:
     """
     Validate and parse a separator-separated list.
 
@@ -435,11 +435,11 @@ def validate_int(
 
     try:
         int_value = int(value)
-    except (ValueError, TypeError):
+    except (ValueError, TypeError) as e:
         raise ValidationError(
             f"{field_name} must be an integer (got: {value})",
             operation="validation", details={"field": field_name, "value": str(value)}
-        )
+        ) from e
 
     if min_value is not None and int_value < min_value:
         raise ValidationError(

@@ -8,11 +8,11 @@ Handles loading and merging configuration from multiple sources:
 4. Hardcoded defaults (fallbacks)
 """
 
-import os
 import json
-from pathlib import Path
-from typing import Dict, Any, Optional, Union, TypeVar, Type
+import os
 from abc import ABC, abstractmethod
+from pathlib import Path
+from typing import Any, Optional, TypeVar
 
 # Generic type for subclasses of BaseConfigManager
 T = TypeVar('T', bound='BaseConfigManager')
@@ -34,7 +34,7 @@ class BaseConfigManager(ABC):
         self.service_name = self.get_service_name()
         if not self.service_name:
             raise ValueError("Service name must be defined by get_service_name() in subclass.")
-        
+
         self.env_prefix = self.service_name.upper() # e.g., JIRA, CONFLUENCE, SPLUNK
         self.config = self._load_config()
         self.profile = profile or self._get_default_profile()
@@ -61,7 +61,7 @@ class BaseConfigManager(ABC):
             current = current.parent
         return None
 
-    def _load_config(self) -> Dict[str, Any]:
+    def _load_config(self) -> dict[str, Any]:
         """
         Load and merge configuration from all sources.
         Configuration is structured by service name at the top level.
@@ -76,7 +76,7 @@ class BaseConfigManager(ABC):
             global_settings_path = claude_dir / 'settings.json'
             if global_settings_path.exists():
                 try:
-                    with open(global_settings_path, 'r') as f:
+                    with open(global_settings_path) as f:
                         global_config = json.load(f).get(self.service_name, {})
                     config = self._merge_config(config, global_config)
                 except json.JSONDecodeError:
@@ -87,17 +87,17 @@ class BaseConfigManager(ABC):
             local_settings_path = claude_dir / 'settings.local.json'
             if local_settings_path.exists():
                 try:
-                    with open(local_settings_path, 'r') as f:
+                    with open(local_settings_path) as f:
                         local_config = json.load(f).get(self.service_name, {})
                     config = self._merge_config(config, local_config)
                 except json.JSONDecodeError:
                     # Ignore malformed config files, or log a warning
                     pass
-        
+
         # Return the merged config under the service name key
         return {self.service_name: config}
 
-    def _merge_config(self, base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+    def _merge_config(self, base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
         """
         Recursively merge override config into base config.
         """
@@ -120,7 +120,7 @@ class BaseConfigManager(ABC):
 
         return self.config.get(self.service_name, {}).get('default_profile', 'default')
 
-    def get_profile_config(self, profile: Optional[str] = None) -> Dict[str, Any]:
+    def get_profile_config(self, profile: Optional[str] = None) -> dict[str, Any]:
         """
         Get configuration for a specific profile.
         """
@@ -129,7 +129,7 @@ class BaseConfigManager(ABC):
         # Return an empty dict if profile not found, so subclasses don't have to handle KeyError
         return profiles.get(profile_name, {})
 
-    def get_api_config(self) -> Dict[str, Any]:
+    def get_api_config(self) -> dict[str, Any]:
         """
         Get API configuration (timeout, retries, etc.).
         """
@@ -157,12 +157,12 @@ class BaseConfigManager(ABC):
         """
         service_specific_var = f"{self.env_prefix}_{cred_name.upper()}"
         generic_var = cred_name.upper()
-        
+
         # Check service-specific var first, then generic
         return os.getenv(service_specific_var) or os.getenv(generic_var)
 
     @abstractmethod
-    def get_default_config(self) -> Dict[str, Any]:
+    def get_default_config(self) -> dict[str, Any]:
         """
         Returns the default configuration dictionary for the service.
         This must be implemented by subclasses.
@@ -170,7 +170,7 @@ class BaseConfigManager(ABC):
         pass
 
     @classmethod
-    def get_instance(cls: Type[T], profile: Optional[str] = None) -> T:
+    def get_instance(cls: type[T], profile: Optional[str] = None) -> T:
         """
         Convenience method to get a ConfigManager instance for the concrete subclass.
         """
@@ -189,9 +189,9 @@ def get_config_manager(service_name: str, profile: Optional[str] = None) -> Base
     # method.
     class GenericServiceConfigManager(BaseConfigManager):
         _service_name_val: str
-        _default_config_val: Dict[str, Any]
+        _default_config_val: dict[str, Any]
 
-        def __init__(self, service_name_val: str, default_config_val: Dict[str, Any], profile_name: Optional[str] = None):
+        def __init__(self, service_name_val: str, default_config_val: dict[str, Any], profile_name: Optional[str] = None):
             self._service_name_val = service_name_val
             self._default_config_val = default_config_val
             super().__init__(profile=profile_name)
@@ -199,10 +199,10 @@ def get_config_manager(service_name: str, profile: Optional[str] = None) -> Base
         def get_service_name(self) -> str:
             return self._service_name_val
 
-        def get_default_config(self) -> Dict[str, Any]:
+        def get_default_config(self) -> dict[str, Any]:
             return self._default_config_val
-    
-    # Placeholder for default config if none is provided. In a real scenario, 
+
+    # Placeholder for default config if none is provided. In a real scenario,
     # you might load this from a global defaults file or pass it in.
     # For now, it will just return a minimal structure under the service_name key.
     minimal_default_config = {
