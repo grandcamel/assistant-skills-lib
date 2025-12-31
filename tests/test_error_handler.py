@@ -142,18 +142,17 @@ def test_handle_errors_keyboard_interrupt(mock_exit):
 
 @pytest.mark.skipif(not __import__('assistant_skills_lib.error_handler', fromlist=['HAS_REQUESTS']).HAS_REQUESTS,
                     reason="requests library not installed")
-@patch('sys.exit')
-def test_handle_errors_connection_error(mock_exit):
+def test_handle_errors_connection_error():
     import requests
     stderr_capture = StringIO()
-    with patch('sys.stderr', stderr_capture):
+    with patch('sys.stderr', stderr_capture), patch('sys.exit') as mock_exit:
         @handle_errors
         def func():
             raise requests.exceptions.ConnectionError("Connection refused")
         func()
-    output = stderr_capture.getvalue()
-    assert "[ERROR] Connection failed" in output
-    mock_exit.assert_called_once_with(1)
+        output = stderr_capture.getvalue()
+        assert "[ERROR] Connection failed" in output
+        mock_exit.assert_called_with(1)
 
 @patch('sys.exit')
 @patch('traceback.print_exc')
