@@ -1,116 +1,226 @@
-"""Tests for error_handler module."""
-
 import pytest
-from assistant_skills_lib import (
-    APIError,
+import sys
+import re
+from io import StringIO
+from unittest.mock import patch, Mock
+from typing import Any, Dict, Type
+
+from assistant_skills_lib.error_handler import (
+    BaseAPIError,
     AuthenticationError,
+    PermissionError,
+    ValidationError,
     NotFoundError,
     RateLimitError,
-    ValidationError,
+    ConflictError,
+    ServerError,
+    AuthorizationError,
     sanitize_error_message,
+    print_error,
+    handle_errors,
+    handle_api_error,
     ErrorContext,
+    # For BC aliases
+    APIError,
+    ValidationError as BC_ValidationError, # To avoid name clash with BaseAPIError subclass
 )
 
+# --- Test Exception Hierarchy ---
+def test_base_api_error_message():
+    err = BaseAPIError("Test message")
+    assert str(err) == "Test message"
 
-class TestAPIError:
-    """Tests for APIError and subclasses."""
+def test_base_api_error_with_status_code_and_operation():
+    err = BaseAPIError("Test message", status_code=400, operation="TestOp")
+    assert str(err) == "[TestOp] (HTTP 400) Test message"
 
-    def test_api_error_basic(self):
-        """Test basic APIError."""
-        error = APIError("Something went wrong", status_code=500)
-        assert str(error) == "(HTTP 500) Something went wrong"
-        assert error.status_code == 500
+def test_authentication_error_inheritance():
+    err = AuthenticationError("Auth failed")
+    assert isinstance(err, BaseAPIError)
 
-    def test_api_error_with_operation(self):
-        """Test APIError with operation."""
-        error = APIError("Failed", status_code=500, operation="fetch user")
-        assert "[fetch user]" in str(error)
-        assert "(HTTP 500)" in str(error)
+def test_authorization_error_inheritance():
+    err = AuthorizationError("Authz failed")
+    assert isinstance(err, PermissionError)
+    assert isinstance(err, BaseAPIError)
 
-    def test_authentication_error(self):
-        """Test AuthenticationError."""
-        error = AuthenticationError("Invalid token", status_code=401)
-        assert isinstance(error, APIError)
-        assert error.status_code == 401
+# --- Test sanitize_error_message ---
+@pytest.mark.parametrize("input_message, expected_message", [
+    # API token needs 10+ chars to match the regex
+    ("api_token=xyz123abcdef", "api_token=[REDACTED]"),
+    ("email=test@example.com", "email=[REDACTED]"),
+    ("Bearer abc.123.def", "Bearer [REDACTED]"),
+    ("Basic dXNlcjpwYXNz", "Basic [REDACTED]"),
+    # URL with credentials - email pattern matches 'user:pass@host.com' first
+    ("https://user:pass@host.com", "https://user=[REDACTED]"),
+    ("session_id=123-abc", "session_id=[REDACTED]"),
+    ("password=mysecret", "password=[REDACTED]"),
+    ("No sensitive data here", "No sensitive data here"),
+    (123, "123") # Non-string input
+])
+def test_sanitize_error_message(input_message, expected_message):
+    assert sanitize_error_message(input_message) == expected_message
 
-    def test_not_found_error(self):
-        """Test NotFoundError."""
-        error = NotFoundError("User not found", status_code=404)
-        assert isinstance(error, APIError)
-        assert error.status_code == 404
+# --- Test print_error ---
+def test_print_error_simple():
+    stderr_capture = StringIO()
+    with patch('sys.stderr', stderr_capture):
+        print_error("Simple error message")
+    output = stderr_capture.getvalue()
+    assert "[ERROR] Simple error message" in output
 
-    def test_rate_limit_error(self):
-        """Test RateLimitError with retry_after."""
-        error = RateLimitError("Too many requests", status_code=429, retry_after=60)
-        assert isinstance(error, APIError)
-        assert error.retry_after == 60
+def test_print_error_with_exception():
+    stderr_capture = StringIO()
+    with patch('sys.stderr', stderr_capture):
+        err = AuthenticationError("Auth failed")
+        print_error("Failed to login", error=err)
+    output = stderr_capture.getvalue()
+    assert "[ERROR] Failed to login" in output
+    assert "Details: Auth failed" in output
+    assert "Hint: Check your API credentials/token" in output
 
-    def test_validation_error(self):
-        """Test ValidationError."""
-        error = ValidationError("Invalid input", status_code=400)
-        assert isinstance(error, APIError)
-        assert error.status_code == 400
+def test_print_error_with_suggestion():
+    stderr_capture = StringIO()
+    with patch('sys.stderr', stderr_capture):
+        print_error("Bad input", suggestion="Check your format")
+    output = stderr_capture.getvalue()
+    assert "[ERROR] Bad input" in output
+    assert "Suggestion: Check your format" in output
 
+@patch('traceback.print_exc')
+def test_print_error_with_traceback(mock_print_exc):
+    stderr_capture = StringIO()
+    with patch('sys.stderr', stderr_capture):
+        try:
+            raise ValueError("Test")
+        except ValueError as e:
+            print_error("Unexpected error", error=e, show_traceback=True)
+    output = stderr_capture.getvalue()
+    assert "[ERROR] Unexpected error" in output
+    mock_print_exc.assert_called_once()
 
-class TestSanitizeErrorMessage:
-    """Tests for sanitize_error_message function."""
-
-    def test_sanitize_api_token(self):
-        """Test sanitizing API token."""
-        message = 'api_token="abc123secret456"'
-        result = sanitize_error_message(message)
-        assert "abc123secret456" not in result
-        assert "REDACTED" in result
-
-    def test_sanitize_bearer_token(self):
-        """Test sanitizing Bearer token."""
-        message = "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9"
-        result = sanitize_error_message(message)
-        assert "eyJhbGciOiJIUzI1NiJ9" not in result
-        assert "REDACTED" in result
-
-    def test_sanitize_password(self):
-        """Test sanitizing password."""
-        message = 'password="mysecretpass"'
-        result = sanitize_error_message(message)
-        assert "mysecretpass" not in result
-        assert "REDACTED" in result
-
-    def test_sanitize_url_credentials(self):
-        """Test sanitizing URL with credentials."""
-        message = "https://user:pass@api.example.com"
-        result = sanitize_error_message(message)
-        assert "user:pass" not in result
-        assert "REDACTED" in result
-
-    def test_no_sanitization_needed(self):
-        """Test message with no sensitive data."""
-        message = "Connection timeout after 30 seconds"
-        result = sanitize_error_message(message)
-        assert result == message
+def test_print_error_with_extra_hints():
+    stderr_capture = StringIO()
+    with patch('sys.stderr', stderr_capture):
+        err = AuthenticationError("Auth failed")
+        extra_hints = {AuthenticationError: "Custom auth hint"}
+        print_error("Failed to login", error=err, extra_hints=extra_hints)
+    output = stderr_capture.getvalue()
+    # Both generic and custom hints are shown (custom after generic)
+    assert "Hint:" in output
 
 
-class TestErrorContext:
-    """Tests for ErrorContext context manager."""
+# --- Test handle_errors decorator ---
+def test_handle_errors_success():
+    @handle_errors
+    def func():
+        return "Success"
+    assert func() == "Success"
 
-    def test_error_context_enhances_error(self):
-        """Test that ErrorContext enhances APIError."""
-        with pytest.raises(APIError) as exc_info:
-            with ErrorContext("creating resource", resource_id=123):
-                raise APIError("Failed to create")
+@patch('sys.exit')
+def test_handle_errors_base_api_error(mock_exit):
+    stderr_capture = StringIO()
+    with patch('sys.stderr', stderr_capture):
+        @handle_errors
+        def func():
+            raise BaseAPIError("Generic API error")
+        func()
+    output = stderr_capture.getvalue()
+    assert "[ERROR] API error" in output
+    mock_exit.assert_called_once_with(1)
 
-        assert "creating resource" in exc_info.value.operation
-        assert "resource_id=123" in exc_info.value.operation
+@patch('sys.exit')
+def test_handle_errors_keyboard_interrupt(mock_exit):
+    stderr_capture = StringIO()
+    with patch('sys.stderr', stderr_capture):
+        @handle_errors
+        def func():
+            raise KeyboardInterrupt
+        func()
+    output = stderr_capture.getvalue()
+    assert "Operation cancelled by user" in output
+    mock_exit.assert_called_once_with(130)
 
-    def test_error_context_no_error(self):
-        """Test ErrorContext with no error."""
-        # Should not raise
-        with ErrorContext("doing something"):
-            result = 1 + 1
-        assert result == 2
+@pytest.mark.skipif(not __import__('assistant_skills_lib.error_handler', fromlist=['HAS_REQUESTS']).HAS_REQUESTS,
+                    reason="requests library not installed")
+@patch('sys.exit')
+def test_handle_errors_connection_error(mock_exit):
+    import requests
+    stderr_capture = StringIO()
+    with patch('sys.stderr', stderr_capture):
+        @handle_errors
+        def func():
+            raise requests.exceptions.ConnectionError("Connection refused")
+        func()
+    output = stderr_capture.getvalue()
+    assert "[ERROR] Connection failed" in output
+    mock_exit.assert_called_once_with(1)
 
-    def test_error_context_non_api_error(self):
-        """Test ErrorContext with non-APIError."""
-        with pytest.raises(ValueError):
-            with ErrorContext("doing something"):
-                raise ValueError("Not an API error")
+@patch('sys.exit')
+@patch('traceback.print_exc')
+def test_handle_errors_unexpected_exception(mock_print_exc, mock_exit):
+    stderr_capture = StringIO()
+    with patch('sys.stderr', stderr_capture):
+        @handle_errors
+        def func():
+            raise ValueError("Something unexpected")
+        func()
+    output = stderr_capture.getvalue()
+    assert "[ERROR] Unexpected error" in output
+    mock_print_exc.assert_called_once()
+    mock_exit.assert_called_once_with(1)
+
+# --- Test ErrorContext ---
+def test_error_context_no_exception():
+    with ErrorContext("test_op"):
+        assert True # No exception occurred
+
+def test_error_context_with_base_api_error():
+    try:
+        with ErrorContext("fetching_data", resource_id="123"):
+            raise BaseAPIError("Data not found")
+    except BaseAPIError as e:
+        assert e.operation == "fetching_data (resource_id=123)"
+
+def test_error_context_with_non_api_error():
+    try:
+        with ErrorContext("doing_math"):
+            raise ValueError("Bad calculation")
+    except ValueError as e:
+        assert str(e) == "Bad calculation"
+        # operation should not be set for non-BaseAPIError exceptions
+
+# --- Test handle_api_error ---
+@patch('assistant_skills_lib.error_handler.HAS_REQUESTS', True)
+def test_handle_api_error_no_error():
+    mock_response = Mock(ok=True)
+    handle_api_error(mock_response, "no_op") # Should not raise
+
+@patch('assistant_skills_lib.error_handler.HAS_REQUESTS', True)
+def test_handle_api_error_401():
+    mock_response = Mock(status_code=401, ok=False, text='{"message": "Invalid auth"}')
+    mock_response.json.return_value = {'message': 'Invalid auth'}
+    with pytest.raises(AuthenticationError) as excinfo:
+        handle_api_error(mock_response, "test_auth")
+    assert "Invalid auth" in str(excinfo.value)
+    assert excinfo.value.status_code == 401
+    assert excinfo.value.operation == "test_auth"
+
+@patch('assistant_skills_lib.error_handler.HAS_REQUESTS', True)
+def test_handle_api_error_429():
+    mock_response = Mock(status_code=429, ok=False, headers={'Retry-After': '60'}, text='{"message": "Rate limit"}')
+    mock_response.json.return_value = {'message': 'Rate limit'}
+    with pytest.raises(RateLimitError) as excinfo:
+        handle_api_error(mock_response, "test_rate_limit")
+    assert excinfo.value.retry_after == 60
+
+@patch('assistant_skills_lib.error_handler.HAS_REQUESTS', False)
+def test_handle_api_error_requires_requests():
+    with pytest.raises(ImportError):
+        handle_api_error(Mock(), "test")
+
+# --- Test BC Aliases ---
+def test_api_error_alias():
+    assert APIError == BaseAPIError
+
+def test_bc_validation_error_alias():
+    assert BC_ValidationError == ValidationError

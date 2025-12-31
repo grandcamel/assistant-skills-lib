@@ -1,138 +1,183 @@
-"""Tests for validators module."""
-
 import pytest
-from assistant_skills_lib import (
-    validate_url,
+import os
+from pathlib import Path
+from unittest.mock import patch
+
+from assistant_skills_lib.validators import (
     validate_required,
     validate_name,
+    validate_topic_prefix,
     validate_path,
+    validate_url,
+    validate_email,
     validate_choice,
-    InputValidationError,
+    validate_list,
+    validate_int,
 )
+from assistant_skills_lib.error_handler import ValidationError # Ensure this is the correct ValidationError
 
+# --- Test validate_required ---
+@pytest.mark.parametrize("value, field_name, expected", [
+    ("test", "field", "test"),
+    ("  test  ", "field", "test"),
+])
+def test_validate_required_success(value, field_name, expected):
+    assert validate_required(value, field_name) == expected
 
-class TestValidateUrl:
-    """Tests for validate_url function."""
+@pytest.mark.parametrize("value, field_name, error_msg", [
+    (None, "field", "field is required"),
+    ("", "field", "field cannot be empty"),
+    ("   ", "field", "field cannot be empty"),
+])
+def test_validate_required_failure(value, field_name, error_msg):
+    with pytest.raises(ValidationError, match=error_msg):
+        validate_required(value, field_name)
 
-    def test_valid_https_url(self):
-        """Test valid HTTPS URL."""
-        result = validate_url("https://example.com")
-        assert result == "https://example.com"
+# --- Test validate_name ---
+@pytest.mark.parametrize("name, expected", [
+    ("ProjectName", "ProjectName"),
+    ("skill-name", "skill-name"),
+    ("skill_name", "skill_name"),
+    ("SKILL123", "SKILL123"),
+])
+def test_validate_name_success(name, expected):
+    assert validate_name(name) == expected
 
-    def test_valid_http_url(self):
-        """Test valid HTTP URL."""
-        result = validate_url("http://example.com")
-        assert result == "http://example.com"
+@pytest.mark.parametrize("name, kwargs, error_msg", [
+    ("1invalid", {}, "name must start with a letter"),
+    ("invalid name", {}, "name can only contain letters, numbers"),
+    ("long" * 20, {}, "name must be at most 64 characters"),
+    ("a", {"min_length": 2}, "name must be at least 2 characters"),
+])
+def test_validate_name_failure(name, kwargs, error_msg):
+    with pytest.raises(ValidationError, match=error_msg):
+        validate_name(name, **kwargs)
 
-    def test_url_with_path(self):
-        """Test URL with path."""
-        result = validate_url("https://example.com/api/v1")
-        assert result == "https://example.com/api/v1"
+# --- Test validate_topic_prefix ---
+@pytest.mark.parametrize("prefix, expected", [
+    ("topic1", "topic1"),
+    ("topic", "topic"),
+    ("Topic", "topic"),  # Auto-lowercased
+    ("TOPIC", "topic"),  # Auto-lowercased
+])
+def test_validate_topic_prefix_success(prefix, expected):
+    assert validate_topic_prefix(prefix) == expected
 
-    def test_invalid_url_scheme(self):
-        """Test URL with invalid scheme."""
-        with pytest.raises(InputValidationError):
-            validate_url("ftp://example.com")  # ftp not in default allowed schemes
+@pytest.mark.parametrize("prefix, error_msg", [
+    ("1topic", "Topic prefix must be lowercase letters/numbers, starting with a letter"),
+    ("topic-name", "Topic prefix must be lowercase letters/numbers"),
+    ("long" * 10, "Topic prefix should be concise"),
+])
+def test_validate_topic_prefix_failure(prefix, error_msg):
+    with pytest.raises(ValidationError, match=error_msg):
+        validate_topic_prefix(prefix)
 
-    def test_url_auto_adds_scheme(self):
-        """Test that URL without scheme gets https:// added."""
-        result = validate_url("example.com")
-        assert result == "https://example.com"
+# --- Test validate_path ---
+def test_validate_path_success(tmp_path):
+    test_file = tmp_path / "test.txt"
+    test_file.write_text("content")
+    assert validate_path(test_file, must_exist=True) == test_file
 
-    def test_empty_url(self):
-        """Test empty URL."""
-        with pytest.raises(InputValidationError):
-            validate_url("")
+def test_validate_path_create_parents(tmp_path):
+    new_path = tmp_path / "a" / "b" / "file.txt"
+    validated = validate_path(new_path, create_parents=True)
+    assert validated == new_path
+    assert new_path.parent.exists()
 
+@pytest.mark.parametrize("path, kwargs, error_msg", [
+    ("nonexistent.txt", {"must_exist": True}, "path does not exist"),
+    (__file__, {"must_be_dir": True}, "path is not a directory"),
+    (os.path.dirname(__file__), {"must_be_file": True}, "path is not a file"),
+])
+def test_validate_path_failure(path, kwargs, error_msg):
+    with pytest.raises(ValidationError, match=error_msg):
+        validate_path(path, **kwargs)
 
-class TestValidateRequired:
-    """Tests for validate_required function."""
+# --- Test validate_url ---
+@pytest.mark.parametrize("url, kwargs, expected", [
+    ("http://example.com", {}, "http://example.com"),
+    ("example.com", {"require_https": True}, "https://example.com"),
+    ("https://example.com/", {}, "https://example.com"),
+    # ftp requires explicit allowed_schemes since default is ['http', 'https']
+    ("ftp://example.com", {"allowed_schemes": ["ftp", "http", "https"]}, "ftp://example.com"),
+    # URLs without scheme get https:// auto-added
+    ("example.com", {}, "https://example.com"),
+])
+def test_validate_url_success(url, kwargs, expected):
+    assert validate_url(url, **kwargs) == expected
 
-    def test_valid_value(self):
-        """Test valid non-empty value."""
-        result = validate_required("hello", "field")
-        assert result == "hello"
+@pytest.mark.parametrize("url, kwargs, error_msg", [
+    # ftp is not allowed by default (only http/https)
+    ("ftp://example.com", {}, "URL must use one of: http, https"),
+    ("http://example.com", {"require_https": True}, "URL must use HTTPS"),
+    ("example.com", {"allowed_domains": [".test.com"]}, "URL must be from an allowed domain"),
+])
+def test_validate_url_failure(url, kwargs, error_msg):
+    with pytest.raises(ValidationError, match=error_msg):
+        validate_url(url, **kwargs)
 
-    def test_whitespace_only(self):
-        """Test whitespace-only value."""
-        with pytest.raises(InputValidationError):
-            validate_required("   ", "field")
+# --- Test validate_email ---
+@pytest.mark.parametrize("email, expected", [
+    ("test@example.com", "test@example.com"),
+    ("TEST@example.com", "test@example.com"),
+])
+def test_validate_email_success(email, expected):
+    assert validate_email(email) == expected
 
-    def test_none_value(self):
-        """Test None value."""
-        with pytest.raises(InputValidationError):
-            validate_required(None, "field")
+@pytest.mark.parametrize("email, error_msg", [
+    ("invalid-email", "is not a valid email address"),
+    ("test@", "is not a valid email address"),
+])
+def test_validate_email_failure(email, error_msg):
+    with pytest.raises(ValidationError, match=error_msg):
+        validate_email(email)
 
-    def test_empty_string(self):
-        """Test empty string."""
-        with pytest.raises(InputValidationError):
-            validate_required("", "field")
+# --- Test validate_choice ---
+@pytest.mark.parametrize("value, choices, expected", [
+    ("apple", ["apple", "banana"], "apple"),
+    ("Apple", ["apple", "banana"], "apple"), # Case-insensitive match
+])
+def test_validate_choice_success(value, choices, expected):
+    assert validate_choice(value, choices) == expected
 
+def test_validate_choice_failure():
+    with pytest.raises(ValidationError, match="Invalid value: 'grape'"):
+        validate_choice("grape", ["apple", "banana"])
 
-class TestValidateName:
-    """Tests for validate_name function."""
+# --- Test validate_list ---
+@pytest.mark.parametrize("value, expected", [
+    ("a,b,c", ["a", "b", "c"]),
+    ("a, b , c", ["a", "b", "c"]),
+    ("a,,b", ["a", "b"]),
+    ("", []),
+])
+def test_validate_list_success(value, expected):
+    assert validate_list(value) == expected
 
-    def test_valid_name(self):
-        """Test valid name."""
-        result = validate_name("my-skill", "skill name")
-        assert result == "my-skill"
+@pytest.mark.parametrize("value, kwargs, error_msg", [
+    ("", {"min_items": 1}, "requires at least 1 items"),
+    ("a,b,c", {"max_items": 2}, "allows at most 2 items"),
+])
+def test_validate_list_failure(value, kwargs, error_msg):
+    with pytest.raises(ValidationError, match=error_msg):
+        validate_list(value, **kwargs)
 
-    def test_name_with_underscore(self):
-        """Test name with underscore."""
-        result = validate_name("my_skill", "skill name")
-        assert result == "my_skill"
+# --- Test validate_int ---
+@pytest.mark.parametrize("value, kwargs, expected", [
+    (10, {}, 10),
+    ("5", {}, 5),
+    (None, {"allow_none": True}, None),
+    (10, {"min_value": 5, "max_value": 15}, 10),
+])
+def test_validate_int_success(value, kwargs, expected):
+    assert validate_int(value, **kwargs) == expected
 
-    def test_name_with_numbers(self):
-        """Test name with numbers."""
-        result = validate_name("skill123", "skill name")
-        assert result == "skill123"
-
-    def test_invalid_name_with_spaces(self):
-        """Test invalid name with spaces."""
-        with pytest.raises(InputValidationError):
-            validate_name("my skill", "skill name")
-
-
-class TestValidatePath:
-    """Tests for validate_path function."""
-
-    def test_valid_path(self):
-        """Test valid path."""
-        import tempfile
-        from pathlib import Path
-
-        with tempfile.NamedTemporaryFile() as f:
-            result = validate_path(f.name, "file")
-            # Result may be Path or str, compare resolved paths
-            assert Path(result).resolve() == Path(f.name).resolve()
-
-    def test_nonexistent_path(self):
-        """Test nonexistent path raises error when must_exist=True."""
-        with pytest.raises(InputValidationError):
-            validate_path("/nonexistent/path/to/file.txt", "file", must_exist=True)
-
-    def test_nonexistent_path_allowed_by_default(self):
-        """Test nonexistent path is allowed by default (must_exist=False)."""
-        from pathlib import Path
-        result = validate_path("/nonexistent/path/to/file.txt", "file")
-        assert isinstance(result, Path)
-
-
-class TestValidateChoice:
-    """Tests for validate_choice function."""
-
-    def test_valid_choice(self):
-        """Test valid choice."""
-        result = validate_choice("active", ["active", "inactive"], "status")
-        assert result == "active"
-
-    def test_invalid_choice(self):
-        """Test invalid choice."""
-        with pytest.raises(InputValidationError):
-            validate_choice("unknown", ["active", "inactive"], "status")
-
-    def test_case_insensitive(self):
-        """Test case insensitivity - function accepts different cases."""
-        # validate_choice is case-insensitive
-        result = validate_choice("Active", ["active", "inactive"], "status")
-        assert result.lower() == "active"
+@pytest.mark.parametrize("value, kwargs, error_msg", [
+    (None, {}, "is required"),
+    ("abc", {}, "must be an integer"),
+    (3, {"min_value": 5}, "must be at least 5"),
+    (10, {"max_value": 5}, "must be at most 5"),
+])
+def test_validate_int_failure(value, kwargs, error_msg):
+    with pytest.raises(ValidationError, match=error_msg):
+        validate_int(value, **kwargs)
