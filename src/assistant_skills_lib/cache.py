@@ -51,10 +51,9 @@ def is_simple_glob_pattern(pattern: str) -> bool:
     """
     Check if a glob pattern is simple enough to convert to SQL LIKE.
     """
-    if '[' in pattern or ']' in pattern or '{' in pattern or '}' in pattern:
+    # Patterns with character classes or other special glob syntax are not simple
+    if any(c in pattern for c in "[]{}"):
         return False
-    if '**' in pattern:
-        return True
     return True
 
 
@@ -253,6 +252,7 @@ class SkillCache:
                     to_delete = [(row["key"], row["category"]) for row in cursor if fnmatch.fnmatch(row["key"], pattern)]
                     if to_delete:
                         conn.executemany("DELETE FROM cache_entries WHERE key = ? AND category = ?", to_delete)
+                        conn.commit()
                     return len(to_delete)
             elif category is not None:
                 cursor = conn.execute("DELETE FROM cache_entries WHERE category = ?", (category,))
