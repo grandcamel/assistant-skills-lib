@@ -83,7 +83,7 @@ class TestFormatList:
     def test_empty_list(self):
         """Test empty list."""
         result = format_list([])
-        assert result == ""
+        assert result == "(no items)"
 
 
 class TestFormatJson:

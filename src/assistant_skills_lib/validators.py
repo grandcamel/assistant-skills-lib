@@ -1,33 +1,18 @@
 """
-Validators for Assistant Builder
+Generic Input Validators for Assistant Skills
 
-Provides input validation utilities for user inputs and paths.
-
-Usage:
-    from validators import validate_required, validate_path, validate_name
-
-    name = validate_name(user_input)  # Raises ValueError if invalid
-    path = validate_path(path_input)  # Returns validated Path
+Provides common input validation utilities for user inputs, paths, URLs, etc.
 """
 
 import re
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Any
+
+# Import ValidationError from the base error_handler
+from assistant_skills_lib.error_handler import ValidationError
 
 
-class ValidationError(ValueError):
-    """Custom exception for validation errors with helpful messages."""
-
-    def __init__(self, message: str, field: str = None, suggestion: str = None):
-        self.field = field
-        self.suggestion = suggestion
-        full_message = message
-        if suggestion:
-            full_message += f"\nSuggestion: {suggestion}"
-        super().__init__(full_message)
-
-
-def validate_required(value: Optional[str], field_name: str = "value") -> str:
+def validate_required(value: Optional[Any], field_name: str = "value") -> str:
     """
     Validate that a value is provided and not empty.
 
@@ -42,11 +27,11 @@ def validate_required(value: Optional[str], field_name: str = "value") -> str:
         ValidationError: If value is None or empty
     """
     if value is None:
-        raise ValidationError(f"{field_name} is required", field=field_name)
+        raise ValidationError(f"{field_name} is required", operation="validation", details={"field": field_name})
 
     stripped = str(value).strip()
     if not stripped:
-        raise ValidationError(f"{field_name} cannot be empty", field=field_name)
+        raise ValidationError(f"{field_name} cannot be empty", operation="validation", details={"field": field_name})
 
     return stripped
 
@@ -82,13 +67,13 @@ def validate_name(
     if len(name) < min_length:
         raise ValidationError(
             f"{field_name} must be at least {min_length} characters",
-            field=field_name
+            operation="validation", details={"field": field_name, "value": name}
         )
 
     if len(name) > max_length:
         raise ValidationError(
             f"{field_name} must be at most {max_length} characters",
-            field=field_name
+            operation="validation", details={"field": field_name, "value": name}
         )
 
     # Build allowed pattern
@@ -109,15 +94,15 @@ def validate_name(
 
         raise ValidationError(
             f"{field_name} can only contain {allowed_desc}",
-            field=field_name,
-            suggestion=f"Try: {re.sub(r'[^a-zA-Z0-9_-]', '-', name)}"
+            operation="validation",
+            details={"field": field_name, "value": name, "suggestion": f"Try: {re.sub(r'[^a-zA-Z0-9_-]', '-', name)}"}
         )
 
     # Must start with letter
     if not name[0].isalpha():
         raise ValidationError(
             f"{field_name} must start with a letter",
-            field=field_name
+            operation="validation", details={"field": field_name, "value": name}
         )
 
     return name
@@ -142,14 +127,14 @@ def validate_topic_prefix(prefix: str) -> str:
     if not re.match(r'^[a-z][a-z0-9]*$', prefix):
         raise ValidationError(
             "Topic prefix must be lowercase letters/numbers, starting with a letter",
-            field="topic prefix",
-            suggestion=f"Try: {re.sub(r'[^a-z0-9]', '', prefix.lower())}"
+            operation="validation",
+            details={"field": "topic prefix", "value": prefix, "suggestion": f"Try: {re.sub(r'[^a-z0-9]', '', prefix.lower())}"}
         )
 
     if len(prefix) > 20:
         raise ValidationError(
             "Topic prefix should be concise (max 20 characters)",
-            field="topic prefix"
+            operation="validation", details={"field": "topic prefix", "value": prefix}
         )
 
     return prefix
@@ -157,6 +142,7 @@ def validate_topic_prefix(prefix: str) -> str:
 
 def validate_path(
     path: Union[str, Path],
+    field_name: str = "path",
     must_exist: bool = False,
     must_be_dir: bool = False,
     must_be_file: bool = False,
@@ -167,6 +153,7 @@ def validate_path(
 
     Args:
         path: Path to validate
+        field_name: Name of the field for error messages
         must_exist: Require path to exist
         must_be_dir: Require path to be a directory
         must_be_file: Require path to be a file
@@ -179,28 +166,28 @@ def validate_path(
         ValidationError: If path is invalid
     """
     if not path:
-        raise ValidationError("Path is required", field="path")
+        raise ValidationError(f"{field_name} is required", operation="validation", details={"field": field_name})
 
     resolved = Path(path).expanduser().resolve()
 
     if must_exist and not resolved.exists():
         raise ValidationError(
-            f"Path does not exist: {resolved}",
-            field="path"
+            f"{field_name} does not exist: {resolved}",
+            operation="validation", details={"field": field_name, "value": str(resolved)}
         )
 
     if must_be_dir:
         if resolved.exists() and not resolved.is_dir():
             raise ValidationError(
-                f"Path is not a directory: {resolved}",
-                field="path"
+                f"{field_name} is not a directory: {resolved}",
+                operation="validation", details={"field": field_name, "value": str(resolved)}
             )
 
     if must_be_file:
         if resolved.exists() and not resolved.is_file():
             raise ValidationError(
-                f"Path is not a file: {resolved}",
-                field="path"
+                f"{field_name} is not a file: {resolved}",
+                operation="validation", details={"field": field_name, "value": str(resolved)}
             )
 
     if create_parents and not resolved.parent.exists():
@@ -209,33 +196,126 @@ def validate_path(
     return resolved
 
 
-def validate_url(url: str, field_name: str = "URL") -> str:
+def validate_url(
+    url: str,
+    field_name: str = "URL",
+    require_https: bool = False,
+    allowed_schemes: Optional[List[str]] = None,
+    allowed_domains: Optional[List[str]] = None
+) -> str:
     """
-    Validate a URL format.
+    Validate a URL format. This version is more robust, combining features from service libs.
 
     Args:
         url: URL to validate
         field_name: Field name for error messages
+        require_https: If True, only HTTPS protocol is allowed.
+        allowed_schemes: List of allowed URL schemes (e.g., ['http', 'https']). Defaults to ['http', 'https'].
+        allowed_domains: List of allowed domain suffixes (e.g., ['.atlassian.net', '.splunkcloud.com']).
 
     Returns:
-        Validated URL string
+        Validated URL string (normalized, no trailing slash).
 
     Raises:
         ValidationError: If URL is invalid
     """
+    from urllib.parse import urlparse
+
     url = validate_required(url, field_name)
 
-    # Basic URL pattern
-    pattern = r'^https?://[a-zA-Z0-9][-a-zA-Z0-9.]*[a-zA-Z0-9](:[0-9]+)?(/.*)?$'
+    if allowed_schemes is None:
+        allowed_schemes = ['http', 'https']
 
-    if not re.match(pattern, url):
+    # Add scheme if missing (e.g., "example.com" -> "https://example.com" if require_https)
+    if '://' not in url:
+        if require_https:
+            url = f"https://{url}"
+        elif 'https' in allowed_schemes: # Default to https if allowed
+             url = f"https://{url}"
+        elif 'http' in allowed_schemes: # Fallback to http if allowed
+             url = f"http://{url}"
+        else:
+             raise ValidationError(
+                f"{field_name} must include a valid scheme (e.g., http:// or https://)",
+                operation="validation", details={"field": field_name, "value": url}
+            )
+
+    try:
+        parsed = urlparse(url)
+    except Exception as e:
         raise ValidationError(
-            f"Invalid {field_name} format",
-            field=field_name,
-            suggestion="URL should start with http:// or https://"
+            f"Invalid {field_name} format: {e}",
+            operation="validation", details={"field": field_name, "value": url}
         )
 
-    return url
+    if not parsed.scheme or parsed.scheme not in allowed_schemes:
+        raise ValidationError(
+            f"{field_name} must use one of: {', '.join(allowed_schemes)} (got: {parsed.scheme})",
+            operation="validation", details={"field": field_name, "value": url}
+        )
+
+    if require_https and parsed.scheme != 'https':
+        raise ValidationError(
+            f"{field_name} must use HTTPS",
+            operation="validation", details={"field": field_name, "value": url}
+        )
+
+    if not parsed.netloc:
+        raise ValidationError(
+            f"{field_name} must include a host",
+            operation="validation", details={"field": field_name, "value": url}
+        )
+    
+    if allowed_domains:
+        domain_match = False
+        for domain_suffix in allowed_domains:
+            if parsed.netloc.endswith(domain_suffix):
+                domain_match = True
+                break
+        if not domain_match:
+            raise ValidationError(
+                f"{field_name} must be from an allowed domain: {', '.join(allowed_domains)}",
+                operation="validation", details={"field": field_name, "value": url}
+            )
+
+    # Basic hostname pattern (optional for very generic URL validation, parsed.netloc covers most)
+    # pattern = r'^[a-zA-Z0-9][-a-zA-Z0-9.]*[a-zA-Z0-9](:[0-9]+)?$'
+    # if not re.match(pattern, parsed.netloc.split(':')[0]):
+    #     raise ValidationError(f"Invalid {field_name} hostname format", field=field_name, value=url)
+
+    return url.rstrip('/') # Normalize: remove trailing slash
+
+
+def validate_email(
+    email: str,
+    field_name: str = "email",
+) -> str:
+    """
+    Validate an email address.
+
+    Args:
+        email: The email address to validate
+        field_name: Name of the field for error messages
+
+    Returns:
+        Validated email (lowercase)
+
+    Raises:
+        ValidationError: If the email is invalid
+    """
+    email = validate_required(email, field_name)
+
+    email = email.strip().lower()
+
+    # Basic email pattern - more comprehensive than just existence
+    email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    if not re.match(email_pattern, email):
+        raise ValidationError(
+            f"{field_name} is not a valid email address",
+            operation="validation", details={"field": field_name, "value": email}
+        )
+
+    return email
 
 
 def validate_choice(
@@ -270,9 +350,9 @@ def validate_choice(
             return choice
 
     raise ValidationError(
-        f"Invalid {field_name}: '{value}'",
-        field=field_name,
-        suggestion=f"Choose from: {', '.join(choices)}"
+        f"Invalid {field_name}: '{value}'. Choose from: {', '.join(choices)}",
+        operation="validation",
+        details={"field": field_name, "value": value, "valid_choices": choices}
     )
 
 
@@ -284,10 +364,10 @@ def validate_list(
     max_items: Optional[int] = None
 ) -> List[str]:
     """
-    Validate and parse a comma-separated list.
+    Validate and parse a separator-separated list.
 
     Args:
-        value: Comma-separated string
+        value: Separator-separated string
         field_name: Field name for error messages
         separator: List separator character
         min_items: Minimum number of items required
@@ -303,23 +383,74 @@ def validate_list(
         if min_items > 0:
             raise ValidationError(
                 f"{field_name} requires at least {min_items} items",
-                field=field_name
+                operation="validation", details={"field": field_name}
             )
         return []
 
     items = [item.strip() for item in value.split(separator)]
-    items = [item for item in items if item]  # Remove empty
+    items = [item for item in items if item]  # Remove empty strings
 
     if len(items) < min_items:
         raise ValidationError(
             f"{field_name} requires at least {min_items} items, got {len(items)}",
-            field=field_name
+            operation="validation", details={"field": field_name, "value": value}
         )
 
     if max_items and len(items) > max_items:
         raise ValidationError(
             f"{field_name} allows at most {max_items} items, got {len(items)}",
-            field=field_name
+            operation="validation", details={"field": field_name, "value": value}
         )
 
     return items
+
+
+def validate_int(
+    value: Union[str, int],
+    field_name: str = "value",
+    min_value: Optional[int] = None,
+    max_value: Optional[int] = None,
+    allow_none: bool = False
+) -> Optional[int]:
+    """
+    Validate that a value is an integer within an optional range.
+
+    Args:
+        value: Value to validate.
+        field_name: Name of the field for error messages.
+        min_value: Minimum allowed integer value (inclusive).
+        max_value: Maximum allowed integer value (inclusive).
+        allow_none: If True, None is allowed and returned as None.
+
+    Returns:
+        Validated integer, or None if allow_none is True and value is None.
+
+    Raises:
+        ValidationError: If value is not an integer or outside the range.
+    """
+    if value is None:
+        if allow_none:
+            return None
+        raise ValidationError(f"{field_name} is required", operation="validation", details={"field": field_name})
+
+    try:
+        int_value = int(value)
+    except (ValueError, TypeError):
+        raise ValidationError(
+            f"{field_name} must be an integer (got: {value})",
+            operation="validation", details={"field": field_name, "value": str(value)}
+        )
+
+    if min_value is not None and int_value < min_value:
+        raise ValidationError(
+            f"{field_name} must be at least {min_value} (got: {int_value})",
+            operation="validation", details={"field": field_name, "value": str(int_value)}
+        )
+
+    if max_value is not None and int_value > max_value:
+        raise ValidationError(
+            f"{field_name} must be at most {max_value} (got: {int_value})",
+            operation="validation", details={"field": field_name, "value": str(int_value)}
+        )
+
+    return int_value

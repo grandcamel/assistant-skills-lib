@@ -17,7 +17,7 @@ Usage:
     from assistant_skills_lib.error_handler import handle_errors, APIError
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 # Formatters - Output formatting utilities
 from .formatters import (

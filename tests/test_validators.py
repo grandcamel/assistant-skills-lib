@@ -29,10 +29,15 @@ class TestValidateUrl:
         result = validate_url("https://example.com/api/v1")
         assert result == "https://example.com/api/v1"
 
-    def test_invalid_url(self):
-        """Test invalid URL."""
+    def test_invalid_url_scheme(self):
+        """Test URL with invalid scheme."""
         with pytest.raises(InputValidationError):
-            validate_url("not-a-url")
+            validate_url("ftp://example.com")  # ftp not in default allowed schemes
+
+    def test_url_auto_adds_scheme(self):
+        """Test that URL without scheme gets https:// added."""
+        result = validate_url("example.com")
+        assert result == "https://example.com"
 
     def test_empty_url(self):
         """Test empty URL."""
@@ -102,9 +107,15 @@ class TestValidatePath:
             assert Path(result).resolve() == Path(f.name).resolve()
 
     def test_nonexistent_path(self):
-        """Test nonexistent path raises error."""
+        """Test nonexistent path raises error when must_exist=True."""
         with pytest.raises(InputValidationError):
-            validate_path("/nonexistent/path/to/file.txt", "file")
+            validate_path("/nonexistent/path/to/file.txt", "file", must_exist=True)
+
+    def test_nonexistent_path_allowed_by_default(self):
+        """Test nonexistent path is allowed by default (must_exist=False)."""
+        from pathlib import Path
+        result = validate_path("/nonexistent/path/to/file.txt", "file")
+        assert isinstance(result, Path)
 
 
 class TestValidateChoice:

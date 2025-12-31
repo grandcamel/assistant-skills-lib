@@ -1,18 +1,34 @@
 """
-Formatters for Assistant Builder
+Generic Output Formatters for Assistant Skills
 
-Provides output formatting utilities for consistent CLI output.
-
-Usage:
-    from formatters import format_table, format_tree, print_success, print_error
-
-    print(format_table(data, headers=['Name', 'Status']))
-    print_success("Operation completed")
+Provides consistent CLI output utilities, including:
+- ANSI colorization
+- Generic print functions (success, error, warning, info, header)
+- Table formatting (using tabulate if available, with a fallback)
+- JSON formatting
+- List formatting
+- Path formatting
+- File size formatting
+- Count pluralization
+- Timestamp formatting
+- CSV export/string generation
 """
 
 import json
 import sys
-from typing import Any, Dict, List, Optional, Sequence
+import csv
+from datetime import datetime
+from pathlib import Path
+from io import StringIO
+from typing import Any, Dict, List, Optional, Sequence, Union
+
+
+# Try to import tabulate for advanced table formatting
+try:
+    from tabulate import tabulate
+    HAS_TABULATE = True
+except ImportError:
+    HAS_TABULATE = False
 
 
 # ANSI color codes
@@ -43,16 +59,22 @@ def _colorize(text: str, color: str) -> str:
 
 def format_table(
     data: Sequence[Dict[str, Any]],
+    columns: Optional[List[str]] = None,
     headers: Optional[List[str]] = None,
-    keys: Optional[List[str]] = None
+    tablefmt: str = 'simple', # default format for tabulate
+    max_col_width: int = 50, # For fallback table
+    truncate_long_values: bool = True,
 ) -> str:
     """
-    Format data as a simple ASCII table.
+    Format data as an ASCII table. Uses 'tabulate' if available, otherwise a basic fallback.
 
     Args:
         data: List of dictionaries to format
-        headers: Optional list of header labels
-        keys: Keys to include (if None, uses all keys from first item)
+        columns: Optional list of keys to include from each dictionary. If None, uses all keys from the first item.
+        headers: Optional list of header labels. If None, uses `columns` values as headers.
+        tablefmt: Format string for `tabulate` (e.g., 'plain', 'simple', 'grid', 'fancy_grid', 'pipe', 'org', 'psql').
+        max_col_width: Maximum width for columns in the fallback table.
+        truncate_long_values: If True, truncate long cell values in the fallback table.
 
     Returns:
         Formatted table string
@@ -60,22 +82,56 @@ def format_table(
     if not data:
         return "(no data)"
 
-    # Determine columns
-    if keys is None:
-        keys = list(data[0].keys())
+    if columns is None:
+        columns = list(data[0].keys())
 
     if headers is None:
-        headers = keys
+        headers = columns
+
+    # Use tabulate if available
+    if HAS_TABULATE:
+        # Prepare rows, ensuring all items are strings for tabulate
+        rows = []
+        for row_dict in data:
+            row_list = []
+            for col_key in columns:
+                value = row_dict.get(col_key, '')
+                if isinstance(value, (list, tuple)):
+                    value = ', '.join(map(str, value))
+                elif isinstance(value, dict):
+                    # Try to get a 'name' or 'title' from dict, otherwise stringify
+                    value = value.get('name', value.get('title', str(value)))
+                row_list.append(str(value))
+            rows.append(row_list)
+        return tabulate(rows, headers=headers, tablefmt=tablefmt)
+    else:
+        # Fallback to basic table formatting logic
+        return _format_basic_table_fallback(data, columns, headers, max_col_width, truncate_long_values)
+
+
+def _format_basic_table_fallback(
+    data: Sequence[Dict[str, Any]],
+    columns: List[str],
+    headers: List[str],
+    max_col_width: int,
+    truncate_long_values: bool,
+) -> str:
+    """
+    Basic ASCII table formatting fallback when 'tabulate' is not installed.
+    """
+    lines = []
 
     # Calculate column widths
     widths = [len(str(h)) for h in headers]
     for row in data:
-        for i, key in enumerate(keys):
+        for i, key in enumerate(columns):
             val = str(row.get(key, ''))
+            if truncate_long_values and len(val) > max_col_width:
+                val = val[:max_col_width - 3] + "..."
             widths[i] = max(widths[i], len(val))
-
-    # Build table
-    lines = []
+    
+    # Apply max_col_width to calculated widths
+    widths = [min(w, max_col_width) for w in widths]
 
     # Header row
     header_row = ' | '.join(str(h).ljust(widths[i]) for i, h in enumerate(headers))
@@ -86,10 +142,10 @@ def format_table(
     lines.append(separator)
 
     # Data rows
-    for row in data:
+    for row_dict in data:
         row_str = ' | '.join(
-            str(row.get(key, '')).ljust(widths[i])
-            for i, key in enumerate(keys)
+            (str(row_dict.get(key, ''))[:widths[i]] if truncate_long_values else str(row_dict.get(key, ''))).ljust(widths[i])
+            for i, key in enumerate(columns)
         )
         lines.append(row_str)
 
@@ -116,9 +172,9 @@ def format_tree(
     """
     lines = [root]
 
-    def add_items(items: List, prefix: str = '', is_last_parent: bool = True):
-        for i, item in enumerate(items):
-            is_last = i == len(items) - 1
+    def add_items(current_items: List, prefix: str = '', is_last_parent: bool = True):
+        for i, item in enumerate(current_items):
+            is_last = i == len(current_items) - 1
 
             # Determine branch character
             if is_last:
@@ -140,32 +196,61 @@ def format_tree(
     return '\n'.join(lines)
 
 
-def format_json(data: Any, indent: int = 2) -> str:
+def format_json(data: Any, indent: int = 2, ensure_ascii: bool = False) -> str:
     """
     Format data as pretty-printed JSON.
 
     Args:
         data: Data to format
         indent: Indentation level
+        ensure_ascii: If False, allow non-ASCII characters to be output directly.
 
     Returns:
         JSON string
     """
-    return json.dumps(data, indent=indent, default=str)
+    return json.dumps(data, indent=indent, default=str, ensure_ascii=ensure_ascii)
 
 
-def format_list(items: List[str], bullet: str = '-') -> str:
+def format_list(
+    items: Sequence[str],
+    bullet: str = '•',
+    numbered: bool = False,
+    max_items: Optional[int] = None,
+    truncate_message: str = " ... and {remaining} more"
+) -> str:
     """
-    Format items as a bulleted list.
+    Format items as a bulleted or numbered list.
 
     Args:
         items: List of strings
-        bullet: Bullet character
+        bullet: Bullet character (for non-numbered lists)
+        numbered: If True, format as a numbered list.
+        max_items: Maximum number of items to display before truncating.
+        truncate_message: Message to show if items are truncated.
+                          Use {remaining} placeholder for count.
 
     Returns:
         Formatted list string
     """
-    return '\n'.join(f"{bullet} {item}" for item in items)
+    if not items:
+        return "(no items)"
+
+    display_items = items
+    truncated = False
+    if max_items is not None and len(items) > max_items:
+        display_items = items[:max_items]
+        truncated = True
+
+    lines = []
+    for i, item in enumerate(display_items, 1):
+        prefix = f"{i}." if numbered else bullet
+        lines.append(f" {prefix} {item}")
+
+    if truncated:
+        remaining = len(items) - max_items
+        lines.append(truncate_message.format(remaining=remaining))
+
+    return '\n'.join(lines)
 
 
 def print_success(message: str) -> None:
@@ -175,7 +260,7 @@ def print_success(message: str) -> None:
 
 
 def print_error(message: str) -> None:
-    """Print an error message in red."""
+    """Print an error message in red to stderr."""
     prefix = _colorize("✗", Colors.RED)
     print(f"{prefix} {message}", file=sys.stderr)
 
@@ -202,42 +287,43 @@ def print_header(title: str) -> None:
         print('=' * len(title))
 
 
-def format_path(path: str, relative_to: Optional[str] = None) -> str:
+def format_path(path: str, relative_to: Optional[Union[str, Path]] = None) -> str:
     """
     Format a path for display.
 
     Args:
-        path: Absolute path
-        relative_to: Optional base path to make relative
+        path: Absolute path string or Path object
+        relative_to: Optional base path to make relative to.
 
     Returns:
-        Formatted path string
+        Formatted path string (e.g., "~/path/to/file" or "relative/path")
     """
-    from pathlib import Path
-
     p = Path(path)
 
     if relative_to:
         try:
             return str(p.relative_to(relative_to))
         except ValueError:
-            pass
+            pass # Not relative to base, fall through to home or absolute
 
-    # Use ~ for home directory
+    # Use ~ for home directory if applicable
     home = Path.home()
     try:
         return '~/' + str(p.relative_to(home))
     except ValueError:
-        return str(p)
+        return str(p) # Return absolute path if not relative to home
 
 
-def format_file_size(size_bytes: int) -> str:
+def format_file_size(size_bytes: Union[int, float]) -> str:
     """Format file size in human-readable format."""
-    for unit in ['B', 'KB', 'MB', 'GB']:
+    if size_bytes < 0:
+        return "N/A"
+    
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
         if size_bytes < 1024:
             return f"{size_bytes:.1f} {unit}"
         size_bytes /= 1024
-    return f"{size_bytes:.1f} TB"
+    return f"{size_bytes:.1f} PB"
 
 
 def format_count(count: int, singular: str, plural: Optional[str] = None) -> str:
@@ -257,3 +343,135 @@ def format_count(count: int, singular: str, plural: Optional[str] = None) -> str
 
     word = singular if count == 1 else plural
     return f"{count} {word}"
+
+
+def format_large_number(count: int) -> str:
+    """
+    Format large count with K/M/B suffix.
+
+    Args:
+        count: Count to format
+
+    Returns:
+        Formatted count string
+    """
+    if count < 1000:
+        return str(count)
+    elif count < 1_000_000:
+        return f"{count / 1000:.1f}K"
+    elif count < 1_000_000_000:
+        return f"{count / 1_000_000:.1f}M"
+    else:
+        return f"{count / 1_000_000_000:.1f}B"
+
+
+def format_timestamp(timestamp: Optional[str], format_str: str = "%Y-%m-%d %H:%M:%S") -> str:
+    """
+    Format an ISO timestamp for display.
+    Handles various ISO-like formats and provides a consistent output.
+
+    Args:
+        timestamp: ISO format timestamp string
+        format_str: Output format string (strftime-compatible)
+
+    Returns:
+        Formatted date/time string, or original timestamp if parsing fails
+    """
+    if not timestamp:
+        return "N/A"
+
+    try:
+        # Handle various ISO formats, including fractional seconds and timezone info
+        # datetime.fromisoformat requires exact format, so try to clean/adapt
+        if timestamp.endswith('Z'):
+            timestamp = timestamp[:-1] + '+00:00'
+        
+        # Split at '+' or '-' for timezone to remove it if not needed for fromisoformat
+        dt_part = timestamp.split('+')[0].split('-')[0] # get only date-time part
+        
+        # Try parsing with microsecond precision, then without
+        try:
+            dt = datetime.fromisoformat(dt_part)
+        except ValueError:
+            # Try without microseconds if the first attempt fails
+            dt = datetime.strptime(dt_part.split('.')[0], "%Y-%m-%dT%H:%M:%S")
+
+        return dt.strftime(format_str)
+    except (ValueError, TypeError):
+        return timestamp # Return original string if parsing fails
+
+
+def export_csv(
+    data: List[Dict[str, Any]],
+    file_path: Union[str, Path],
+    columns: Optional[List[str]] = None,
+    headers: Optional[List[str]] = None,
+) -> Path:
+    """
+    Export a list of dictionaries to a CSV file.
+
+    Args:
+        data: List of dictionaries to export.
+        file_path: Output file path.
+        columns: Keys to include from each dictionary. If None, uses all keys from the first item.
+        headers: Custom headers for the CSV file. If None, uses `columns` values as headers.
+
+    Returns:
+        Path to the created CSV file.
+
+    Raises:
+        ValueError: If no data is provided.
+    """
+    file_path = Path(file_path).expanduser().resolve()
+
+    if not data:
+        raise ValueError("No data to export to CSV.")
+
+    if columns is None:
+        columns = list(data[0].keys())
+
+    if headers is None:
+        headers = columns
+
+    with open(file_path, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=columns, extrasaction='ignore')
+        writer.writeheader()
+        writer.writerows(data)
+
+    return file_path
+
+
+def get_csv_string(
+    data: List[Dict[str, Any]],
+    columns: Optional[List[str]] = None,
+    headers: Optional[List[str]] = None,
+) -> str:
+    """
+    Generate a CSV formatted string from a list of dictionaries.
+
+    Args:
+        data: List of dictionaries to convert.
+        columns: Keys to include from each dictionary. If None, uses all keys from the first item.
+        headers: Custom headers for the CSV string. If None, uses `columns` values as headers.
+
+    Returns:
+        CSV formatted string.
+
+    Raises:
+        ValueError: If no data is provided.
+    """
+    if not data:
+        return "" # Return empty string for no data, not an error
+
+    if columns is None:
+        columns = list(data[0].keys())
+
+    if headers is None:
+        headers = columns
+
+    output_buffer = StringIO()
+    writer = csv.DictWriter(output_buffer, fieldnames=columns, extrasaction='ignore')
+    writer.writeheader()
+    writer.writerows(data)
+
+    return output_buffer.getvalue()

@@ -18,14 +18,14 @@ class TestAPIError:
     def test_api_error_basic(self):
         """Test basic APIError."""
         error = APIError("Something went wrong", status_code=500)
-        assert str(error) == "(500) Something went wrong"
+        assert str(error) == "(HTTP 500) Something went wrong"
         assert error.status_code == 500
 
     def test_api_error_with_operation(self):
         """Test APIError with operation."""
         error = APIError("Failed", status_code=500, operation="fetch user")
         assert "[fetch user]" in str(error)
-        assert "(500)" in str(error)
+        assert "(HTTP 500)" in str(error)
 
     def test_authentication_error(self):
         """Test AuthenticationError."""
