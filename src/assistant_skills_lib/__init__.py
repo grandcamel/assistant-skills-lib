@@ -34,6 +34,8 @@ from .formatters import (
     print_info,
     print_header,
     Colors,
+    _colorize,
+    truncate,
 )
 
 # Validators - Input validation utilities
@@ -45,33 +47,40 @@ from .validators import (
     validate_path,
     validate_choice,
     validate_list,
-    ValidationError as InputValidationError,
+    validate_int, # Newly added generic validator
 )
 
 # Cache - Response caching
 from .cache import (
-    Cache,
-    cached,
-    get_cache,
+    SkillCache,
+    get_skill_cache,
     invalidate,
+    cached,
 )
 
 # Error Handler - Exception hierarchy
 from .error_handler import (
-    APIError,
+    BaseAPIError,
     AuthenticationError,
     PermissionError,
     NotFoundError,
     RateLimitError,
-    ValidationError,
+    ValidationError, # Corrected from BaseValidationError
     ConflictError,
     ServerError,
     handle_errors,
-    handle_api_error,
+    handle_api_error, 
     print_error,
     sanitize_error_message,
     ErrorContext,
 )
+
+# Backwards compatibility aliases
+Cache = SkillCache
+get_cache = get_skill_cache
+APIError = BaseAPIError
+InputValidationError = ValidationError # Alias for backwards compatibility
+
 
 # Template Engine - Template loading and rendering
 from .template_engine import (
@@ -110,6 +119,8 @@ __all__ = [
     "print_info",
     "print_header",
     "Colors",
+    "truncate", 
+    "_colorize", 
     # Validators
     "validate_url",
     "validate_required",
@@ -118,14 +129,18 @@ __all__ = [
     "validate_path",
     "validate_choice",
     "validate_list",
-    "InputValidationError",
-    # Cache
-    "Cache",
-    "cached",
-    "get_cache",
+    "validate_int",
+    "InputValidationError", # For BC
+    # Cache (new names)
+    "SkillCache",
+    "get_skill_cache",
     "invalidate",
-    # Error Handler
-    "APIError",
+    "cached",
+    # Cache (old names for BC)
+    "Cache",
+    "get_cache",
+    # Error Handler (new names)
+    "BaseAPIError",
     "AuthenticationError",
     "PermissionError",
     "NotFoundError",
@@ -138,6 +153,8 @@ __all__ = [
     "print_error",
     "sanitize_error_message",
     "ErrorContext",
+    # Error Handler (old names for BC)
+    "APIError",
     # Template Engine
     "load_template",
     "render_template",

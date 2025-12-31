@@ -475,3 +475,20 @@ def get_csv_string(
     writer.writerows(data)
 
     return output_buffer.getvalue()
+
+
+def truncate(text: str, max_length: int = 100, suffix: str = "...") -> str:
+    """
+    Truncate text to a maximum length.
+
+    Args:
+        text: Text to truncate
+        max_length: Maximum length including suffix
+        suffix: Suffix to add when truncated
+
+    Returns:
+        Truncated text
+    """
+    if len(text) <= max_length:
+        return text
+    return text[:max_length - len(suffix)] + suffix

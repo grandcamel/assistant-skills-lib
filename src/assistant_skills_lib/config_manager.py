@@ -67,7 +67,7 @@ class BaseConfigManager(ABC):
         Configuration is structured by service name at the top level.
         """
         # Start with default config for this service
-        config = {self.service_name: self.get_default_config()}
+        config = self.get_default_config()
 
         claude_dir = self._find_claude_dir()
 
@@ -77,7 +77,7 @@ class BaseConfigManager(ABC):
             if global_settings_path.exists():
                 try:
                     with open(global_settings_path, 'r') as f:
-                        global_config = json.load(f)
+                        global_config = json.load(f).get(self.service_name, {})
                     config = self._merge_config(config, global_config)
                 except json.JSONDecodeError:
                     # Ignore malformed config files, or log a warning
@@ -88,12 +88,14 @@ class BaseConfigManager(ABC):
             if local_settings_path.exists():
                 try:
                     with open(local_settings_path, 'r') as f:
-                        local_config = json.load(f)
+                        local_config = json.load(f).get(self.service_name, {})
                     config = self._merge_config(config, local_config)
                 except json.JSONDecodeError:
                     # Ignore malformed config files, or log a warning
                     pass
-        return config
+        
+        # Return the merged config under the service name key
+        return {self.service_name: config}
 
     def _merge_config(self, base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
         """
