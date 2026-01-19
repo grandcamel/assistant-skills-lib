@@ -322,12 +322,19 @@ get_cache = get_skill_cache
 
 # Global cache registry for the cached decorator
 _cache_registry: dict[str, SkillCache] = {}
+_cache_registry_lock = threading.Lock()
 
 
 def _get_default_cache() -> SkillCache:
-    """Get or create the default cache instance."""
+    """Get or create the default cache instance.
+
+    Thread-safe singleton access using double-checked locking pattern.
+    """
     if "default" not in _cache_registry:
-        _cache_registry["default"] = SkillCache(cache_name="default")
+        with _cache_registry_lock:
+            # Double-check after acquiring lock
+            if "default" not in _cache_registry:
+                _cache_registry["default"] = SkillCache(cache_name="default")
     return _cache_registry["default"]
 
 

@@ -97,7 +97,7 @@ def render_template(template: str, context: dict[str, str], strict: bool = True)
     return PLACEHOLDER_PATTERN.sub(replace, template)
 
 
-def validate_context(template: str, context: dict[str, str]) -> dict[str, any]:
+def validate_context(template: str, context: dict[str, str]) -> dict[str, Any]:
     """
     Validate that context provides all required placeholders.
 
