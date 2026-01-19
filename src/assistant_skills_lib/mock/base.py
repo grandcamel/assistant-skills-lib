@@ -17,7 +17,7 @@ from __future__ import annotations
 import os
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Callable, Optional, TypeVar
 
 T = TypeVar("T", bound="BaseMockClient")
@@ -132,7 +132,7 @@ class BaseMockClient:
         Returns:
             ISO formatted timestamp string.
         """
-        return datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
     def _now_epoch(self) -> float:
         """Return current timestamp as epoch seconds.
