@@ -10,6 +10,7 @@ Handles loading and merging configuration from multiple sources:
 
 import json
 import os
+import threading
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Optional, TypeVar
@@ -23,6 +24,10 @@ class BaseConfigManager(ABC):
     Manages configuration from multiple sources with profile support for a given service.
     This is an abstract base class, designed to be extended by service-specific managers.
     """
+
+    # Class-level singleton registry and lock for thread-safe access
+    _instances: dict[type, "BaseConfigManager"] = {}
+    _instance_lock = threading.Lock()
 
     def __init__(self, profile: Optional[str] = None):
         """
@@ -172,9 +177,34 @@ class BaseConfigManager(ABC):
     @classmethod
     def get_instance(cls: type[T], profile: Optional[str] = None) -> T:
         """
-        Convenience method to get a ConfigManager instance for the concrete subclass.
+        Get or create a singleton instance for the concrete subclass.
+
+        Thread-safe singleton access using double-checked locking pattern.
+        Each concrete subclass maintains its own singleton instance.
+
+        Args:
+            profile: Profile name (only used on first instantiation)
+
+        Returns:
+            The singleton instance for this subclass
         """
-        return cls(profile=profile)
+        if cls not in cls._instances:
+            with cls._instance_lock:
+                # Double-check after acquiring lock
+                if cls not in cls._instances:
+                    cls._instances[cls] = cls(profile=profile)
+        return cls._instances[cls]  # type: ignore[return-value]
+
+    @classmethod
+    def reset_instance(cls: type[T]) -> None:
+        """
+        Reset the singleton instance for this subclass.
+
+        Thread-safe method primarily for testing purposes.
+        """
+        with cls._instance_lock:
+            if cls in cls._instances:
+                del cls._instances[cls]
 
 
 def get_config_manager(service_name: str, profile: Optional[str] = None) -> BaseConfigManager:
