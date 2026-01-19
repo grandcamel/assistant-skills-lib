@@ -2,11 +2,16 @@
 Generic Input Validators for Assistant Skills
 
 Provides common input validation utilities for user inputs, paths, URLs, etc.
+
+Security validators:
+- validate_file_path_secure: Prevents directory traversal attacks
+- validate_path_component: Prevents URL path injection
 """
 
 import re
 from pathlib import Path
 from typing import Any, Optional, Union
+from urllib.parse import quote
 
 # Import ValidationError from the base error_handler
 from assistant_skills_lib.error_handler import ValidationError
@@ -454,3 +459,133 @@ def validate_int(
         )
 
     return int_value
+
+
+# =============================================================================
+# Security Validators
+# =============================================================================
+
+
+def validate_file_path_secure(
+    file_path: str,
+    param_name: str = "file_path",
+    base_dir: Optional[Path] = None,
+    allow_absolute: bool = False,
+) -> Path:
+    """
+    Validate file path to prevent directory traversal attacks.
+
+    This is a security-focused validator that prevents:
+    - Path traversal via '..' sequences
+    - Symlink-based traversal attacks
+    - Escaping the base directory (defaults to current working directory)
+
+    Args:
+        file_path: Path to validate
+        param_name: Parameter name for error messages
+        base_dir: Base directory paths must be relative to (defaults to cwd)
+        allow_absolute: If True, allow absolute paths (still validates no '..')
+
+    Returns:
+        Validated Path object
+
+    Raises:
+        ValidationError: If path contains traversal attempts or escapes base_dir
+    """
+    file_path = validate_required(file_path, param_name)
+
+    # Check for explicit path traversal patterns
+    if ".." in file_path:
+        raise ValidationError(
+            f"Path traversal detected in {param_name}: '..' not allowed",
+            operation="validation",
+            details={"field": param_name},
+        )
+
+    path = Path(file_path)
+
+    # Reject symlinks to prevent symlink-based path traversal
+    if path.exists() and path.is_symlink():
+        raise ValidationError(
+            f"Symlinks not allowed in {param_name}",
+            operation="validation",
+            details={"field": param_name},
+        )
+
+    if path.is_absolute():
+        if not allow_absolute:
+            raise ValidationError(
+                f"Absolute paths not allowed in {param_name}",
+                operation="validation",
+                details={"field": param_name},
+            )
+        # For absolute paths, check no .. components
+        for part in path.parts:
+            if part == "..":
+                raise ValidationError(
+                    f"Path traversal detected in {param_name}",
+                    operation="validation",
+                    details={"field": param_name},
+                )
+        return path
+    else:
+        # For relative paths, ensure it doesn't escape base directory
+        if base_dir is None:
+            base_dir = Path.cwd()
+        base_dir = base_dir.resolve()
+
+        try:
+            resolved = (base_dir / path).resolve()
+            # Check the resolved path is within or at base_dir
+            resolved.relative_to(base_dir)
+        except ValueError:
+            raise ValidationError(
+                f"Path {param_name} would escape base directory",
+                operation="validation",
+                details={"field": param_name},
+            )
+
+        return resolved
+
+
+def validate_path_component(
+    component: str,
+    param_name: str = "name",
+) -> str:
+    """
+    Validate and sanitize a path component for use in URLs.
+
+    Prevents path injection by rejecting components with path separators
+    or traversal patterns. Returns URL-encoded component for safe
+    interpolation into REST API endpoints.
+
+    Args:
+        component: Path component to validate (e.g., app name, collection name)
+        param_name: Parameter name for error messages
+
+    Returns:
+        URL-encoded path component safe for REST API paths
+
+    Raises:
+        ValidationError: If component contains disallowed characters
+    """
+    component = validate_required(component, param_name)
+
+    # Reject path traversal
+    if ".." in component:
+        raise ValidationError(
+            f"Path traversal detected in {param_name}: '..' not allowed",
+            operation="validation",
+            details={"field": param_name},
+        )
+
+    # Reject path separators
+    if "/" in component or "\\" in component:
+        raise ValidationError(
+            f"Path separators not allowed in {param_name}",
+            operation="validation",
+            details={"field": param_name},
+        )
+
+    # URL-encode to prevent any special character issues
+    return quote(component, safe="")

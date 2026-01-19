@@ -12,16 +12,90 @@ Provides consistent CLI output utilities, including:
 - Count pluralization
 - Timestamp formatting
 - CSV export/string generation
+- Sensitive field detection and redaction
 """
 
 import csv
 import json
+import re
 import sys
 from collections.abc import Sequence
 from datetime import datetime
 from io import StringIO
 from pathlib import Path
 from typing import Any, Optional, Union
+
+
+# =============================================================================
+# Sensitive Field Detection and Redaction
+# =============================================================================
+
+# Patterns to match sensitive field names (case-insensitive)
+SENSITIVE_FIELD_PATTERNS: frozenset[str] = frozenset({
+    "password",
+    "passwd",
+    "token",
+    "api_key",
+    "apikey",
+    "secret",
+    "auth",
+    "authorization",
+    "credential",
+    "credentials",
+    "private_key",
+    "privatekey",
+    "access_token",
+    "refresh_token",
+    "session_key",
+    "sessionkey",
+    "bearer",
+})
+
+
+def is_sensitive_field(field_name: str) -> bool:
+    """
+    Check if a field name matches sensitive data patterns.
+
+    This function performs case-insensitive substring matching against
+    known sensitive field patterns like 'password', 'token', 'secret', etc.
+
+    Args:
+        field_name: The field name to check
+
+    Returns:
+        True if the field appears to contain sensitive data
+    """
+    field_lower = field_name.lower()
+    return any(pattern in field_lower for pattern in SENSITIVE_FIELD_PATTERNS)
+
+
+def redact_sensitive_value(field_name: str, value: Any) -> Any:
+    """
+    Redact value if the field name indicates sensitive data.
+
+    Args:
+        field_name: The field/key name
+        value: The field value
+
+    Returns:
+        The original value if field is not sensitive, or "[REDACTED]" if sensitive
+    """
+    if is_sensitive_field(field_name):
+        return "[REDACTED]"
+    return value
+
+
+def redact_dict(data: dict[str, Any]) -> dict[str, Any]:
+    """
+    Create a copy of a dictionary with sensitive fields redacted.
+
+    Args:
+        data: Dictionary to redact
+
+    Returns:
+        New dictionary with sensitive values replaced with "[REDACTED]"
+    """
+    return {k: redact_sensitive_value(k, v) for k, v in data.items()}
 
 # Try to import tabulate for advanced table formatting
 try:

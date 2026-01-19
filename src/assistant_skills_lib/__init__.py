@@ -4,20 +4,25 @@ Assistant Skills Library
 Shared Python utilities for building Claude Code Assistant Skills plugins.
 
 Modules:
-    formatters - Output formatting (tables, trees, colors)
-    validators - Input validation (names, URLs, paths)
+    formatters - Output formatting (tables, trees, colors, sensitive field redaction)
+    validators - Input validation (names, URLs, paths, security validators)
     cache - Response caching with TTL
     error_handler - Exception hierarchy and decorators
     template_engine - Template loading and rendering
     project_detector - Assistant Skills project detection
+    credential_manager - Multi-backend credential storage (keychain, JSON, env)
+    batch_processor - Batch processing with checkpoint/resume
+    request_batcher - Parallel HTTP request execution
 
 Usage:
     from assistant_skills_lib import format_table, validate_url
     from assistant_skills_lib.cache import Cache, cached
     from assistant_skills_lib.error_handler import handle_errors, APIError
+    from assistant_skills_lib.credential_manager import BaseCredentialManager
+    from assistant_skills_lib.batch_processor import BatchProcessor
 """
 
-__version__ = "0.2.3"
+__version__ = "0.3.0"
 
 # Formatters - Output formatting utilities
 # Cache - Response caching
@@ -45,6 +50,7 @@ from .error_handler import (
     sanitize_error_message,
 )
 from .formatters import (
+    SENSITIVE_FIELD_PATTERNS,
     Colors,
     _colorize,
     format_count,
@@ -54,10 +60,13 @@ from .formatters import (
     format_path,
     format_table,
     format_tree,
+    is_sensitive_field,
     print_header,
     print_info,
     print_success,
     print_warning,
+    redact_dict,
+    redact_sensitive_value,
     truncate,
 )
 from .formatters import (
@@ -87,13 +96,40 @@ from .template_engine import (
 # Validators - Input validation utilities
 from .validators import (
     validate_choice,
+    validate_file_path_secure,
     validate_int,  # Newly added generic validator
     validate_list,
     validate_name,
     validate_path,
+    validate_path_component,
     validate_required,
     validate_topic_prefix,
     validate_url,
+)
+
+# Credential Manager - Multi-backend credential storage
+from .credential_manager import (
+    BaseCredentialManager,
+    CredentialBackend,
+    CredentialNotFoundError,
+)
+
+# Batch Processor - Batch operations with checkpointing
+from .batch_processor import (
+    BatchConfig,
+    BatchProcessor,
+    BatchProgress,
+    CheckpointManager,
+    generate_operation_id,
+    get_recommended_batch_size,
+    list_pending_checkpoints,
+)
+
+# Request Batcher - Parallel HTTP request execution
+from .request_batcher import (
+    BatchError,
+    BatchResult,
+    RequestBatcher,
 )
 
 # Backwards compatibility aliases
@@ -121,6 +157,11 @@ __all__ = [
     "Colors",
     "truncate",
     "_colorize",
+    # Sensitive field redaction
+    "SENSITIVE_FIELD_PATTERNS",
+    "is_sensitive_field",
+    "redact_sensitive_value",
+    "redact_dict",
     # Validators
     "validate_url",
     "validate_required",
@@ -130,6 +171,9 @@ __all__ = [
     "validate_choice",
     "validate_list",
     "validate_int",
+    # Security validators
+    "validate_file_path_secure",
+    "validate_path_component",
     "InputValidationError", # For BC
     # Cache (new names)
     "SkillCache",
@@ -169,4 +213,20 @@ __all__ = [
     "get_shared_lib_modules",
     "validate_structure",
     "get_project_stats",
+    # Credential Manager
+    "BaseCredentialManager",
+    "CredentialBackend",
+    "CredentialNotFoundError",
+    # Batch Processor
+    "BatchConfig",
+    "BatchProcessor",
+    "BatchProgress",
+    "CheckpointManager",
+    "generate_operation_id",
+    "get_recommended_batch_size",
+    "list_pending_checkpoints",
+    # Request Batcher
+    "BatchError",
+    "BatchResult",
+    "RequestBatcher",
 ]
