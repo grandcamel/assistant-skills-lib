@@ -132,6 +132,12 @@ from .request_batcher import (
     RequestBatcher,
 )
 
+# Mock Client - Base classes for testing
+from .mock import (
+    BaseMockClient,
+    create_mock_mode_checker,
+)
+
 # Backwards compatibility aliases
 Cache = SkillCache
 get_cache = get_skill_cache
@@ -229,4 +235,7 @@ __all__ = [
     "BatchError",
     "BatchResult",
     "RequestBatcher",
+    # Mock Client
+    "BaseMockClient",
+    "create_mock_mode_checker",
 ]
