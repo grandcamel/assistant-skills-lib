@@ -31,9 +31,9 @@ jobs:
         run: |
           ruff check src/
 
-      - name: Run tests
+      - name: Run tests with coverage threshold
         run: |
-          pytest --cov=assistant_skills_lib --cov-report=xml
+          pytest --cov=assistant_skills_lib --cov-report=xml --cov-fail-under=70
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4
@@ -42,9 +42,44 @@ jobs:
           files: ./coverage.xml
           fail_ci_if_error: false
 
+  quality-gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Check for empty test files
+        run: |
+          echo "Checking for empty test files (< 10 lines)..."
+          failed=0
+          for f in tests/test_*.py; do
+            lines=$(wc -l < "$f")
+            if [ "$lines" -lt 10 ]; then
+              echo "ERROR: $f has only $lines lines (minimum 10 required)"
+              failed=1
+            fi
+          done
+          if [ "$failed" -eq 1 ]; then
+            echo "Release gate failed: empty test files detected"
+            exit 1
+          fi
+          echo "All test files have sufficient content"
+
+      - name: Verify API stability tests exist
+        run: |
+          if [ ! -f tests/test_api_stability.py ]; then
+            echo "ERROR: tests/test_api_stability.py is required"
+            exit 1
+          fi
+          echo "API stability tests found"
+
   type-check:
     runs-on: ubuntu-latest
-    continue-on-error: true  # Type errors are warnings, not failures
+    # Type errors now block the build (release gate)
     steps:
       - uses: actions/checkout@v4
 
