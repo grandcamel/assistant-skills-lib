@@ -3,7 +3,7 @@
 Shared Python utilities for building Claude Code Assistant Skills plugins.
 
 [![PyPI version](https://badge.fury.io/py/assistant-skills-lib.svg)](https://badge.fury.io/py/assistant-skills-lib)
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Installation
