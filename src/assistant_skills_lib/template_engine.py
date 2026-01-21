@@ -14,7 +14,7 @@ Usage:
 
 import re
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 # Regex pattern for {{PLACEHOLDER}} syntax
 PLACEHOLDER_PATTERN = re.compile(r'\{\{(\w+)\}\}')
