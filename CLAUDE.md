@@ -103,4 +103,26 @@ Tests are in `tests/` with one test file per module. The `pyproject.toml` config
 - `pythonpath = ["src"]`
 - `addopts = "-v --tb=short"`
 
-CI runs tests against Python 3.8-3.12.
+CI runs tests against Python 3.9-3.12.
+
+## Backwards Compatibility
+
+When renaming internal methods that downstream packages may use, always add an alias:
+
+```python
+def _merge_config(self, base, override):
+    # Implementation
+    ...
+
+# Backwards compatibility alias
+_deep_merge = _merge_config
+```
+
+Current aliases in `config_manager.py`:
+- `_deep_merge` → `_merge_config` (used by splunk-as, jira-as)
+
+Current aliases in `__init__.py`:
+- `Cache` → `SkillCache`
+- `get_cache` → `get_skill_cache`
+- `APIError` → `BaseAPIError`
+- `InputValidationError` → `ValidationError`
