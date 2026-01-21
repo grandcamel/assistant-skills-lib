@@ -21,7 +21,7 @@ T = TypeVar('T', bound='BaseConfigManager')
 
 class BaseConfigManager(ABC):
     """
-    Manages configuration from multiple sources with profile support for a given service.
+    Manages configuration from multiple sources for a given service.
     This is an abstract base class, designed to be extended by service-specific managers.
     """
 
@@ -29,20 +29,16 @@ class BaseConfigManager(ABC):
     _instances: dict[type, "BaseConfigManager"] = {}
     _instance_lock = threading.Lock()
 
-    def __init__(self, profile: Optional[str] = None):
+    def __init__(self):
         """
         Initialize configuration manager.
-
-        Args:
-            profile: Profile name to use (default: from config or environment).
         """
         self.service_name = self.get_service_name()
         if not self.service_name:
             raise ValueError("Service name must be defined by get_service_name() in subclass.")
 
-        self.env_prefix = self.service_name.upper() # e.g., JIRA, CONFLUENCE, SPLUNK
+        self.env_prefix = self.service_name.upper()  # e.g., JIRA, CONFLUENCE, SPLUNK
         self.config = self._load_config()
-        self.profile = profile or self._get_default_profile()
 
     @abstractmethod
     def get_service_name(self) -> str:
@@ -114,26 +110,6 @@ class BaseConfigManager(ABC):
                 result[key] = value
         return result
 
-    def _get_default_profile(self) -> str:
-        """
-        Get default profile from config or environment for the specific service.
-        """
-        env_profile_var = f"{self.env_prefix}_PROFILE"
-        env_profile = os.getenv(env_profile_var)
-        if env_profile:
-            return env_profile
-
-        return self.config.get(self.service_name, {}).get('default_profile', 'default')
-
-    def get_profile_config(self, profile: Optional[str] = None) -> dict[str, Any]:
-        """
-        Get configuration for a specific profile.
-        """
-        profile_name = profile or self.profile
-        profiles = self.config.get(self.service_name, {}).get('profiles', {})
-        # Return an empty dict if profile not found, so subclasses don't have to handle KeyError
-        return profiles.get(profile_name, {})
-
     def get_api_config(self) -> dict[str, Any]:
         """
         Get API configuration (timeout, retries, etc.).
@@ -148,12 +124,6 @@ class BaseConfigManager(ABC):
         api_config = self.config.get(self.service_name, {}).get('api', {})
         defaults.update(api_config)
         return defaults
-
-    def list_profiles(self) -> list:
-        """
-        List all available profiles for the service.
-        """
-        return list(self.config.get(self.service_name, {}).get('profiles', {}).keys())
 
     def get_credential_from_env(self, cred_name: str) -> Optional[str]:
         """
@@ -175,15 +145,12 @@ class BaseConfigManager(ABC):
         pass
 
     @classmethod
-    def get_instance(cls: type[T], profile: Optional[str] = None) -> T:
+    def get_instance(cls: type[T]) -> T:
         """
         Get or create a singleton instance for the concrete subclass.
 
         Thread-safe singleton access using double-checked locking pattern.
         Each concrete subclass maintains its own singleton instance.
-
-        Args:
-            profile: Profile name (only used on first instantiation)
 
         Returns:
             The singleton instance for this subclass
@@ -192,7 +159,7 @@ class BaseConfigManager(ABC):
             with cls._instance_lock:
                 # Double-check after acquiring lock
                 if cls not in cls._instances:
-                    cls._instances[cls] = cls(profile=profile)
+                    cls._instances[cls] = cls()
         return cls._instances[cls]  # type: ignore[return-value]
 
     @classmethod
@@ -207,7 +174,7 @@ class BaseConfigManager(ABC):
                 del cls._instances[cls]
 
 
-def get_config_manager(service_name: str, profile: Optional[str] = None) -> BaseConfigManager:
+def get_config_manager(service_name: str) -> BaseConfigManager:
     """
     Factory function to get a generic BaseConfigManager instance for a given service.
     Note: This factory only returns the BaseConfigManager, not a service-specific subclass.
@@ -221,10 +188,10 @@ def get_config_manager(service_name: str, profile: Optional[str] = None) -> Base
         _service_name_val: str
         _default_config_val: dict[str, Any]
 
-        def __init__(self, service_name_val: str, default_config_val: dict[str, Any], profile_name: Optional[str] = None):
+        def __init__(self, service_name_val: str, default_config_val: dict[str, Any]):
             self._service_name_val = service_name_val
             self._default_config_val = default_config_val
-            super().__init__(profile=profile_name)
+            super().__init__()
 
         def get_service_name(self) -> str:
             return self._service_name_val
@@ -237,8 +204,6 @@ def get_config_manager(service_name: str, profile: Optional[str] = None) -> Base
     # For now, it will just return a minimal structure under the service_name key.
     minimal_default_config = {
         service_name: {
-            'default_profile': 'default',
-            'profiles': {},
             'api': {
                 'timeout': 30,
                 'max_retries': 3,
@@ -247,4 +212,4 @@ def get_config_manager(service_name: str, profile: Optional[str] = None) -> Base
         }
     }
 
-    return GenericServiceConfigManager(service_name, minimal_default_config, profile_name=profile)
+    return GenericServiceConfigManager(service_name, minimal_default_config)

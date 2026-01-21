@@ -17,17 +17,8 @@ def create_test_config_manager_class():
 
         def get_default_config(self) -> Dict[str, Any]:
             return {
-                "default_profile": "default",
-                "profiles": {
-                    "default": {
-                        "url": "http://default.com",
-                        "api_key": "default_key"
-                    },
-                    "prod": {
-                        "url": "http://prod.com",
-                        "api_key": "prod_key"
-                    }
-                },
+                "url": "http://default.com",
+                "api_key": "default_key",
                 "api": {
                     "timeout": 10
                 }
@@ -53,19 +44,12 @@ def create_settings_files(mock_claude_dir):
 
 @patch.dict(os.environ, {}, clear=True)
 @patch('assistant_skills_lib.config_manager.BaseConfigManager._find_claude_dir', return_value=None)
-def test_init_default_profile(mock_find_dir):
+def test_init_basic(mock_find_dir):
     TestConfigManager = create_test_config_manager_class()
     manager = TestConfigManager()
-    assert manager.profile == "default"
     assert manager.service_name == "testservice"
     assert manager.env_prefix == "TESTSERVICE"
 
-@patch.dict(os.environ, {"TESTSERVICE_PROFILE": "prod"}, clear=True)
-@patch('assistant_skills_lib.config_manager.BaseConfigManager._find_claude_dir', return_value=None)
-def test_init_env_profile(mock_find_dir):
-    TestConfigManager = create_test_config_manager_class()
-    manager = TestConfigManager()
-    assert manager.profile == "prod"
 
 def test_find_claude_dir_success(mock_claude_dir):
     TestConfigManager = create_test_config_manager_class()
@@ -92,29 +76,32 @@ def test_load_config_no_files(mock_find_dir):
 def test_load_config_settings_json(mock_claude_dir, create_settings_files):
     TestConfigManager = create_test_config_manager_class()
     create_settings_files(settings_content={
-        "testservice": {"profiles": {"new_profile": {"url": "http://new.com"}}}
+        "testservice": {"url": "http://settings.com", "extra_key": "extra_value"}
     })
     with patch.object(TestConfigManager, '_find_claude_dir', return_value=mock_claude_dir):
         manager = TestConfigManager()
         config = manager._load_config()
-        assert config["testservice"]["profiles"]["new_profile"]["url"] == "http://new.com"
-        assert config["testservice"]["profiles"]["default"]["url"] == "http://default.com" # Default is still there
+        assert config["testservice"]["url"] == "http://settings.com"
+        assert config["testservice"]["extra_key"] == "extra_value"
+        assert config["testservice"]["api_key"] == "default_key"  # Default is still there
+
 
 def test_load_config_local_overrides(mock_claude_dir, create_settings_files):
     TestConfigManager = create_test_config_manager_class()
     create_settings_files(
         settings_content={
-            "testservice": {"profiles": {"prod": {"url": "http://old_prod.com"}}}
+            "testservice": {"url": "http://global.com"}
         },
         local_content={
-            "testservice": {"profiles": {"prod": {"url": "http://local_prod.com", "api_key": "local_key"}}}
+            "testservice": {"url": "http://local.com", "api_key": "local_key"}
         }
     )
     with patch.object(TestConfigManager, '_find_claude_dir', return_value=mock_claude_dir):
         manager = TestConfigManager()
         config = manager._load_config()
-        assert config["testservice"]["profiles"]["prod"]["url"] == "http://local_prod.com"
-        assert config["testservice"]["profiles"]["prod"]["api_key"] == "local_key"
+        assert config["testservice"]["url"] == "http://local.com"
+        assert config["testservice"]["api_key"] == "local_key"
+
 
 def test_load_config_malformed_json(mock_claude_dir):
     TestConfigManager = create_test_config_manager_class()
@@ -122,33 +109,8 @@ def test_load_config_malformed_json(mock_claude_dir):
     with patch.object(TestConfigManager, '_find_claude_dir', return_value=mock_claude_dir):
         manager = TestConfigManager()
         config = manager._load_config()
-        assert config == {"testservice": manager.get_default_config()} # Should fallback to default
+        assert config == {"testservice": manager.get_default_config()}  # Should fallback to default
 
-@patch('assistant_skills_lib.config_manager.BaseConfigManager._find_claude_dir', return_value=None)
-def test_get_profile_config_exists(mock_find_dir):
-    TestConfigManager = create_test_config_manager_class()
-    manager = TestConfigManager(profile="prod")
-    profile_config = manager.get_profile_config()
-    assert profile_config["url"] == "http://prod.com"
-
-@patch('assistant_skills_lib.config_manager.BaseConfigManager._find_claude_dir', return_value=None)
-def test_get_profile_config_not_exists(mock_find_dir):
-    TestConfigManager = create_test_config_manager_class()
-    manager = TestConfigManager(profile="nonexistent")
-    profile_config = manager.get_profile_config()
-    assert profile_config == {}
-
-@patch.dict(os.environ, {}, clear=True)
-def test_get_profile_config_env_override(mock_claude_dir, create_settings_files):
-    TestConfigManager = create_test_config_manager_class()
-    create_settings_files(local_content={
-        "testservice": {"profiles": {"prod": {"url": "http://local.com"}}}
-    })
-    with patch.dict(os.environ, {"TESTSERVICE_PROFILE": "prod"}), \
-         patch.object(TestConfigManager, '_find_claude_dir', return_value=mock_claude_dir):
-        manager = TestConfigManager()
-        profile_config = manager.get_profile_config()
-        assert profile_config["url"] == "http://local.com" # Should pick from local settings
 
 @patch('assistant_skills_lib.config_manager.BaseConfigManager._find_claude_dir', return_value=None)
 def test_get_api_config(mock_find_dir):
@@ -156,14 +118,7 @@ def test_get_api_config(mock_find_dir):
     manager = TestConfigManager()
     api_config = manager.get_api_config()
     assert api_config["timeout"] == 10
-    assert api_config["max_retries"] == 3 # Default from BaseConfigManager
-
-@patch('assistant_skills_lib.config_manager.BaseConfigManager._find_claude_dir', return_value=None)
-def test_list_profiles(mock_find_dir):
-    TestConfigManager = create_test_config_manager_class()
-    manager = TestConfigManager()
-    profiles = manager.list_profiles()
-    assert set(profiles) == {"default", "prod"}
+    assert api_config["max_retries"] == 3  # Default from BaseConfigManager
 
 @patch.dict(os.environ, {"TESTSERVICE_API_KEY": "env_key"}, clear=True)
 @patch('assistant_skills_lib.config_manager.BaseConfigManager._find_claude_dir', return_value=None)
@@ -189,6 +144,6 @@ def test_get_credential_from_env_priority(mock_find_dir):
 @patch('assistant_skills_lib.config_manager.BaseConfigManager._find_claude_dir', return_value=None)
 def test_get_instance(mock_find_dir):
     TestConfigManager = create_test_config_manager_class()
-    instance = TestConfigManager.get_instance("prod")
+    instance = TestConfigManager.get_instance()
     assert isinstance(instance, TestConfigManager)
-    assert instance.profile == "prod"
+    assert instance.service_name == "testservice"
