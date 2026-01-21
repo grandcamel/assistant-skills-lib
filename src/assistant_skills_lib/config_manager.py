@@ -110,6 +110,9 @@ class BaseConfigManager(ABC):
                 result[key] = value
         return result
 
+    # Backwards compatibility alias
+    _deep_merge = _merge_config
+
     def get_api_config(self) -> dict[str, Any]:
         """
         Get API configuration (timeout, retries, etc.).
