@@ -8,7 +8,7 @@ version = "1.0.1"
 description = "Shared Python utilities for building Claude Code Assistant Skills plugins"
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 authors = [
     { name = "grandcamel" }
 ]
@@ -25,10 +25,10 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
@@ -65,20 +65,49 @@ packages = ["src/assistant_skills_lib"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-v --tb=short"
+markers = [
+    "unit: Unit tests (fast, no external calls)",
+    "integration: Integration tests (may require credentials)",
+    "slow: Slow-running tests",
+    "live: Tests requiring live API credentials",
+    "destructive: Tests that modify or delete data",
+    "cache: Cache tests",
+    "config: Configuration tests",
+    "credentials: Credential manager tests",
+    "formatters: Output formatter tests",
+    "validators: Input validator tests",
+    "errors: Error handler tests",
+    "templates: Template engine tests",
+    "batch: Batch processor tests",
+]
 
 [tool.ruff]
 line-length = 100
-target-version = "py39"
+target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "C4"]
 ignore = ["E501"]
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
+
+[tool.coverage.run]
+source = ["src/assistant_skills_lib"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+fail_under = 70
 
 [tool.bandit]
 exclude_dirs = ["tests", "venv", ".venv"]
